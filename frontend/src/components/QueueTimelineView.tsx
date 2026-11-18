@@ -6,7 +6,7 @@ import { isBusyOnlyWaitingReason } from '../utils/waitingReason';
 import type { PrintQueueItem, Printer } from '../api/client';
 import { queueItemThumbnailUrl } from '../utils/queueItemThumbnail';
 import { Button } from './Button';
-import { nextOfficeMoment, officeWindowsBetween, previousOfficeMoment, type OfficeSchedule } from '../utils/officeSchedule';
+import { nextOfficeMoment, officeWindowsBetween, type OfficeSchedule } from '../utils/officeSchedule';
 
 /** Gantt-style 24h-rolling timeline. One horizontal swimlane per printer
  *  (plus one per active target_model and one for unassigned items). Each
@@ -372,17 +372,14 @@ export function QueueTimelineView({
     return { startMs: clearOfOtherCards(snapped, state.laneKey, state.itemId), lane: laneByKey.get(state.laneKey) };
   };
 
-  /** Where one nudge (a snap step) earlier or later would put a card, or null
-   *  when it can't move that way (into the past, or into the card before). */
-  const nudgeTarget = (ev: ScheduleEvent, direction: -1 | 1): number | null => {
-    const current = ev.estimatedStart.getTime();
-    let step = direction > 0
-      ? Math.floor(current / SNAP_MS) * SNAP_MS + SNAP_MS
-      : Math.ceil(current / SNAP_MS) * SNAP_MS - SNAP_MS;
-    // Moving earlier out of the morning lands at the previous day's last slot.
-    if (direction < 0 && officeSchedule) step = previousOfficeMoment(officeSchedule, step, SNAP_MS);
-    const target = clearOfOtherCards(Math.max(nowMs, step), queueLaneKey(ev.item), ev.item.id);
-    return direction > 0 ? (target > current ? target : null) : (target < current ? target : null);
+  /** The queued card just before (-1) or after (1) `ev` on its printer's row,
+   *  which the arrows swap it with. Null at either end of the row, and next
+   *  to a printing card, which is locked. */
+  const swapNeighbour = (ev: ScheduleEvent, direction: -1 | 1): ScheduleEvent | null => {
+    const lane = eventsByLane.get(queueLaneKey(ev.item)) ?? [];
+    const index = lane.findIndex((other) => other.item.id === ev.item.id);
+    const neighbour = index >= 0 ? lane[index + direction] : undefined;
+    return neighbour && neighbour.type === 'queued' ? neighbour : null;
   };
 
   const commitMove = (item: PrintQueueItem, scheduledTime: Date, printerId: number | null) => {
@@ -397,18 +394,50 @@ export function QueueTimelineView({
     onReschedule(item, { printerId, scheduledTime });
   };
 
-  const nudge = (ev: ScheduleEvent, direction: -1 | 1) => {
-    const target = nudgeTarget(ev, direction);
-    if (target != null) commitMove(ev.item, new Date(target), null);
+  /** Swap `ev` with its neighbour: whichever goes first takes the earlier
+   *  card's start, and the other follows it -- straight after it ends, or at
+   *  the next opening when that falls outside office hours -- so the pair
+   *  never overlaps and neither starts while the office is closed. The rest
+   *  of the row then ripples along behind them. */
+  const swap = (ev: ScheduleEvent, direction: -1 | 1) => {
+    const neighbour = swapNeighbour(ev, direction);
+    if (!neighbour) return;
+    const [first, second] = direction < 0 ? [ev, neighbour] : [neighbour, ev];
+    const slotStart = Math.min(ev.estimatedStart.getTime(), neighbour.estimatedStart.getTime());
+    const firstEnd = slotStart + (first.estimatedEnd.getTime() - first.estimatedStart.getTime());
+    const secondStart = officeSchedule ? nextOfficeMoment(officeSchedule, firstEnd) : firstEnd;
+    commitMove(first.item, new Date(slotStart), null);
+    commitMove(second.item, new Date(secondStart), null);
+
+    // Ripple: the jobs after the pair move up (or back) so each one starts
+    // as soon as the one before it ends, at the next opening if that falls
+    // outside office hours. Gaps close and nothing overlaps.
+    const lane = eventsByLane.get(queueLaneKey(ev.item)) ?? [];
+    const lastOfPair = Math.max(
+      lane.findIndex((other) => other.item.id === ev.item.id),
+      lane.findIndex((other) => other.item.id === neighbour.item.id),
+    );
+    let cursor = secondStart + (second.estimatedEnd.getTime() - second.estimatedStart.getTime());
+    for (const follower of lane.slice(lastOfPair + 1)) {
+      if (follower.type !== 'queued') continue;
+      const start = officeSchedule ? nextOfficeMoment(officeSchedule, cursor) : cursor;
+      // Also when only the stored time is stale (drawn later than it says),
+      // so the queue holds exactly what the row shows.
+      const stored = parseUTCDate(follower.item.scheduled_time)?.getTime();
+      if (start !== follower.estimatedStart.getTime() || stored !== start) {
+        commitMove(follower.item, new Date(start), null);
+      }
+      cursor = start + (follower.estimatedEnd.getTime() - follower.estimatedStart.getTime());
+    }
   };
 
   const handleBarKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, ev: ScheduleEvent) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
-    nudge(ev, e.key === 'ArrowLeft' ? -1 : 1);
+    swap(ev, e.key === 'ArrowLeft' ? -1 : 1);
   };
 
-  // The card whose nudge arrows are showing (hovered or focused).
+  // The card whose swap arrows are showing (hovered or focused).
   const [activeCardId, setActiveCardId] = useState<number | null>(null);
   // Whether the active card is too narrow for arrows, and whether its
   // overflow menu is open.
@@ -716,8 +745,8 @@ export function QueueTimelineView({
                         ev.blockedReason ?? null,
                       ].filter(Boolean).join(' · ');
                       const showArrows = draggable && !dragging && activeCardId === ev.item.id;
-                      const earlier = showArrows ? nudgeTarget(ev, -1) : null;
-                      const later = showArrows ? nudgeTarget(ev, 1) : null;
+                      const earlier = showArrows ? swapNeighbour(ev, -1) : null;
+                      const later = showArrows ? swapNeighbour(ev, 1) : null;
                       // Solid and above the card (photo included). A greyed-out
                       // arrow still catches its click: letting it fall through
                       // opened the job instead (it used pointer-events: none).
@@ -740,12 +769,12 @@ export function QueueTimelineView({
                           {...keepOpen}
                           onClick={(e) => {
                             e.stopPropagation();
-                            nudge(ev, -1);
+                            swap(ev, -1);
                           }}
                           disabled={earlier == null}
-                          title={t('queue.smartQueue.nudgeEarlier')}
-                          aria-label={t('queue.smartQueue.nudgeEarlier')}
-                          data-testid={`timeline-nudge-left-${ev.item.id}`}
+                          title={t('queue.smartQueue.swapEarlier')}
+                          aria-label={t('queue.smartQueue.swapEarlier')}
+                          data-testid={`timeline-swap-left-${ev.item.id}`}
                         >
                           <ChevronLeft className="w-4 h-4" />
                         </button>
@@ -758,12 +787,12 @@ export function QueueTimelineView({
                           {...keepOpen}
                           onClick={(e) => {
                             e.stopPropagation();
-                            nudge(ev, 1);
+                            swap(ev, 1);
                           }}
                           disabled={later == null}
-                          title={t('queue.smartQueue.nudgeLater')}
-                          aria-label={t('queue.smartQueue.nudgeLater')}
-                          data-testid={`timeline-nudge-right-${ev.item.id}`}
+                          title={t('queue.smartQueue.swapLater')}
+                          aria-label={t('queue.smartQueue.swapLater')}
+                          data-testid={`timeline-swap-right-${ev.item.id}`}
                         >
                           <ChevronRight className="w-4 h-4" />
                         </button>
@@ -863,7 +892,7 @@ export function QueueTimelineView({
                               aria-expanded={menuOpenId === ev.item.id}
                               title={t('queue.smartQueue.moveMenu')}
                               aria-label={t('queue.smartQueue.moveMenu')}
-                              data-testid={`timeline-nudge-menu-${ev.item.id}`}
+                              data-testid={`timeline-swap-menu-${ev.item.id}`}
                             >
                               <MoreHorizontal className="w-4 h-4" />
                             </button>

@@ -329,74 +329,11 @@ describe('QueueTimelineView cards', () => {
   });
 });
 
-describe('QueueTimelineView nudge arrows', () => {
-  const QUARTER = 15 * 60 * 1000;
-
-  function renderNudge(items: PrintQueueItem[], onReschedule = vi.fn()) {
+describe('QueueTimelineView swap arrows', () => {
+  function renderSwap(items: PrintQueueItem[], onReschedule = vi.fn(), onItemClick = vi.fn()) {
     render(
       <QueueTimelineView
         queueItems={items}
-        printers={printers}
-        printerStatuses={statuses}
-        sjfEnabled={false}
-        onItemClick={() => {}}
-        onReschedule={onReschedule}
-        t={t}
-      />,
-    );
-    return onReschedule;
-  }
-
-  it('shows arrows on a hovered queued card, never on a printing one', () => {
-    renderNudge([running, pending(1, 'Queued job', 1)]);
-    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-100'));
-    expect(screen.queryByTestId('timeline-nudge-left-100')).toBeNull();
-    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
-    expect(screen.getByTestId('timeline-nudge-left-1')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-nudge-right-1')).toBeInTheDocument();
-  });
-
-  it('the right arrow moves a card one quarter hour later', () => {
-    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
-    const onReschedule = renderNudge([pending(1, 'Queued job', 1, { scheduled_time: new Date(inTwo).toISOString() })]);
-    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
-    fireEvent.click(screen.getByTestId('timeline-nudge-right-1'));
-    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo + QUARTER);
-    expect(onReschedule.mock.calls[0][1].printerId).toBeNull();
-  });
-
-  it('the left arrow moves a card one quarter hour earlier', () => {
-    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
-    const onReschedule = renderNudge([pending(1, 'Queued job', 1, { scheduled_time: new Date(inTwo).toISOString() })]);
-    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
-    fireEvent.click(screen.getByTestId('timeline-nudge-left-1'));
-    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo - QUARTER);
-  });
-
-  it('keyboard arrows nudge the focused card', () => {
-    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
-    const onReschedule = renderNudge([pending(1, 'Queued job', 1, { scheduled_time: new Date(inTwo).toISOString() })]);
-    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowRight' });
-    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo + QUARTER);
-  });
-
-  it('cannot move a card back into the one before it', () => {
-    // Chained straight after the running print, so there is no room earlier.
-    const onReschedule = renderNudge([running, pending(1, 'Queued job', 1)]);
-    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
-    expect(screen.getByTestId('timeline-nudge-left-1')).toBeDisabled();
-    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowLeft' });
-    expect(onReschedule).not.toHaveBeenCalled();
-  });
-});
-
-describe('QueueTimelineView arrow fixes', () => {
-  it('a greyed-out arrow swallows its click instead of opening the job', () => {
-    const onItemClick = vi.fn();
-    const onReschedule = vi.fn();
-    render(
-      <QueueTimelineView
-        queueItems={[running, pending(1, 'Queued job', 1)]}
         printers={printers}
         printerStatuses={statuses}
         sjfEnabled={false}
@@ -405,10 +342,73 @@ describe('QueueTimelineView arrow fixes', () => {
         t={t}
       />,
     );
+    return onReschedule;
+  }
+
+  /** item id -> new start (ms), from the reschedule calls a swap made. */
+  const moves = (onReschedule: ReturnType<typeof vi.fn>) =>
+    Object.fromEntries(
+      onReschedule.mock.calls.map(([item, change]) => [item.id, (change.scheduledTime as Date).getTime()]),
+    );
+
+  it('shows arrows on a hovered queued card, never on a printing one', () => {
+    renderSwap([running, pending(1, 'A', 1), pending(2, 'B', 2)]);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-100'));
+    expect(screen.queryByTestId('timeline-swap-left-100')).toBeNull();
     fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
-    const left = screen.getByTestId('timeline-nudge-left-1');
+    expect(screen.getByTestId('timeline-swap-left-1')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-swap-right-1')).toBeInTheDocument();
+  });
+
+  it('the right arrow swaps a card with the next one', () => {
+    // A (2 h) then B (1 h), chained after the running print.
+    const onReschedule = renderSwap([
+      running,
+      pending(1, 'A', 1, { print_time_seconds: 2 * HOUR }),
+      pending(2, 'B', 2),
+    ]);
+    const aStart = parseFloat(screen.getByTestId('timeline-bar-1').style.left);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    fireEvent.click(screen.getByTestId('timeline-swap-right-1'));
+
+    const m = moves(onReschedule);
+    expect(Object.keys(m).sort()).toEqual(['1', '2']);
+    // B takes the earlier start, and A follows straight after B's hour.
+    expect(m[1] - m[2]).toBe(HOUR_MS);
+    expect(barsLeftToRight()).toEqual(['Running now', 'B', 'A']);
+    expect(parseFloat(screen.getByTestId('timeline-bar-2').style.left)).toBeCloseTo(aStart, 1);
+  });
+
+  it('the left arrow swaps a card with the one before it', () => {
+    const onReschedule = renderSwap([running, pending(1, 'A', 1), pending(2, 'B', 2)]);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-2'));
+    fireEvent.click(screen.getByTestId('timeline-swap-left-2'));
+    const m = moves(onReschedule);
+    expect(m[1] - m[2]).toBe(HOUR_MS);
+  });
+
+  it('keyboard arrows swap the focused card', () => {
+    const onReschedule = renderSwap([running, pending(1, 'A', 1), pending(2, 'B', 2)]);
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowRight' });
+    expect(onReschedule).toHaveBeenCalledTimes(2);
+  });
+
+  it('cannot swap with a printing card or past the end of the row', () => {
+    const onReschedule = renderSwap([running, pending(1, 'A', 1), pending(2, 'B', 2)]);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    expect(screen.getByTestId('timeline-swap-left-1')).toBeDisabled();
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-2'));
+    expect(screen.getByTestId('timeline-swap-right-2')).toBeDisabled();
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowLeft' });
+    expect(onReschedule).not.toHaveBeenCalled();
+  });
+
+  it('a greyed-out arrow swallows its click instead of opening the job', () => {
+    const onItemClick = vi.fn();
+    const onReschedule = renderSwap([running, pending(1, 'A', 1)], vi.fn(), onItemClick);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    const left = screen.getByTestId('timeline-swap-left-1');
     expect(left).toBeDisabled();
-    // Clicks on it must not fall through to the card under it.
     expect(left.className).not.toContain('pointer-events-none');
     expect(left.className).toContain('z-30');
     fireEvent.click(left);
@@ -416,36 +416,28 @@ describe('QueueTimelineView arrow fixes', () => {
     expect(onReschedule).not.toHaveBeenCalled();
   });
 
-  it('a very small card gets one overflow button that opens the move arrows', () => {
-    const onReschedule = vi.fn();
-    const QUARTER = 15 * 60 * 1000;
-    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
-    render(
-      <QueueTimelineView
-        queueItems={[pending(1, 'Tiny', 1, { scheduled_time: new Date(inTwo).toISOString(), print_time_seconds: 300 })]}
-        printers={printers}
-        printerStatuses={{}}
-        sjfEnabled={false}
-        onItemClick={() => {}}
-        onReschedule={onReschedule}
-        t={t}
-      />,
-    );
+  it('a very small card gets one overflow button that opens the arrows', () => {
+    const onReschedule = renderSwap([
+      running,
+      pending(1, 'Tiny', 1, { print_time_seconds: 300 }),
+      pending(2, 'B', 2),
+    ]);
     vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ width: 40 } as DOMRect);
     fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
-    expect(screen.queryByTestId('timeline-nudge-left-1')).toBeNull();
-    fireEvent.click(screen.getByTestId('timeline-nudge-menu-1'));
+    expect(screen.queryByTestId('timeline-swap-right-1')).toBeNull();
+    fireEvent.click(screen.getByTestId('timeline-swap-menu-1'));
     expect(screen.getByRole('menu')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('timeline-nudge-right-1'));
-    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo + QUARTER);
+    fireEvent.click(screen.getByTestId('timeline-swap-right-1'));
+    expect(onReschedule).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('QueueTimelineView keeps starts inside office hours', () => {
-  // Monday 2026-11-16 16:40 UTC; office Mon-Fri 09:00-17:00 UTC.
-  const NOW = Date.UTC(2026, 10, 16, 16, 40);
+  // Monday 2026-11-16 15:40 UTC; office Mon-Fri 09:00-17:00 UTC.
+  const NOW = Date.UTC(2026, 10, 16, 15, 40);
   const office = { days: [0, 1, 2, 3, 4], start: '09:00', end: '17:00', timezone: 'UTC' };
   const TUESDAY_9 = Date.UTC(2026, 10, 17, 9);
+  const at = (h: number, m = 0) => new Date(Date.UTC(2026, 10, 16, h, m)).toISOString();
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -469,27 +461,114 @@ describe('QueueTimelineView keeps starts inside office hours', () => {
     return onReschedule;
   }
 
-  it('a nudge past closing time goes to the next morning', () => {
-    const at1645 = new Date(Date.UTC(2026, 10, 16, 16, 45)).toISOString();
-    const onReschedule = renderAt([pending(1, 'Late job', 1, { scheduled_time: at1645 })]);
+  it('a swapped job that would follow after closing starts at the next opening', () => {
+    // A (30 min) at 16:00, B (1 h) at 16:30. Swapped, B runs 16:00 to 17:00 and
+    // A would follow at closing time, so it goes to Tuesday 09:00.
+    const onReschedule = renderAt([
+      pending(1, 'A', 1, { scheduled_time: at(16), print_time_seconds: HOUR / 2 }),
+      pending(2, 'B', 2, { scheduled_time: at(16, 30) }),
+    ]);
     fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowRight' });
-    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(TUESDAY_9);
-  });
-
-  it('a nudge back from the morning goes to the last slot before the previous close', () => {
-    const onReschedule = renderAt([pending(1, 'Morning job', 1, { scheduled_time: new Date(TUESDAY_9).toISOString() })]);
-    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowLeft' });
-    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(Date.UTC(2026, 10, 16, 16, 45));
+    const m = Object.fromEntries(
+      onReschedule.mock.calls.map(([item, change]) => [item.id, (change.scheduledTime as Date).getTime()]),
+    );
+    expect(m[2]).toBe(Date.UTC(2026, 10, 16, 16));
+    expect(m[1]).toBe(TUESDAY_9);
   });
 
   it('a job chained past closing is drawn at the next opening', () => {
-    const at1645 = new Date(Date.UTC(2026, 10, 16, 16, 45)).toISOString();
-    const at1650 = new Date(Date.UTC(2026, 10, 16, 16, 50)).toISOString();
     renderAt([
-      pending(1, 'Late job', 1, { scheduled_time: at1645 }),
-      pending(2, 'Next job', 2, { scheduled_time: at1650 }),
+      pending(1, 'Late job', 1, { scheduled_time: at(16, 45) }),
+      pending(2, 'Next job', 2, { scheduled_time: at(16, 50) }),
     ]);
-    // The window starts at 16:00, so Tuesday 09:00 is 17 of its 24 hours in.
-    expect(parseFloat(screen.getByTestId('timeline-bar-2').style.left)).toBeCloseTo((17 / 24) * 100, 3);
+    // The window starts at 15:00, so Tuesday 09:00 is 18 of its 24 hours in.
+    expect(parseFloat(screen.getByTestId('timeline-bar-2').style.left)).toBeCloseTo((18 / 24) * 100, 3);
   });
+});
+
+describe('QueueTimelineView ripple after a swap', () => {
+  // Monday 2026-11-16 10:40 UTC; office Mon-Fri 09:00-17:00 UTC.
+  const NOW = Date.UTC(2026, 10, 16, 10, 40);
+  const office = { days: [0, 1, 2, 3, 4], start: '09:00', end: '17:00', timezone: 'UTC' };
+  const mon = (h: number, m = 0) => Date.UTC(2026, 10, 16, h, m);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function swapFirstRight(items: PrintQueueItem[]) {
+    const onReschedule = vi.fn();
+    render(
+      <QueueTimelineView
+        queueItems={items}
+        printers={printers}
+        printerStatuses={{}}
+        sjfEnabled={false}
+        officeSchedule={office}
+        onItemClick={() => {}}
+        onReschedule={onReschedule}
+        t={t}
+      />,
+    );
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowRight' });
+    return Object.fromEntries(
+      onReschedule.mock.calls.map(([item, change]) => [item.id, (change.scheduledTime as Date).getTime()]),
+    ) as Record<number, number>;
+  }
+
+  it('closes the gap behind the swapped pair, job after job', () => {
+    // A 11:00 (2 h), B 13:00 (1 h), then C at 15:00 and D at 16:00 with gaps.
+    const m = swapFirstRight([
+      pending(1, 'A', 1, { scheduled_time: new Date(mon(11)).toISOString(), print_time_seconds: 2 * HOUR }),
+      pending(2, 'B', 2, { scheduled_time: new Date(mon(13)).toISOString() }),
+      pending(3, 'C', 3, { scheduled_time: new Date(mon(15)).toISOString() }),
+      pending(4, 'D', 4, { scheduled_time: new Date(mon(16, 30)).toISOString() }),
+    ]);
+    // B 11-12, A 12-14, then C 14-15 and D 15-16.
+    expect(m).toEqual({ 2: mon(11), 1: mon(12), 3: mon(14), 4: mon(15) });
+  });
+
+  it('a follower that would start after closing goes to the next opening', () => {
+    // B (3 h) swaps ahead of A (1 h): B 11-14, A 14-15, C (2 h) 15-17, and D
+    // would start at 17:00, closing time, so it moves to Tuesday 09:00.
+    const m = swapFirstRight([
+      pending(1, 'A', 1, { scheduled_time: new Date(mon(11)).toISOString() }),
+      pending(2, 'B', 2, { scheduled_time: new Date(mon(12)).toISOString(), print_time_seconds: 3 * HOUR }),
+      pending(3, 'C', 3, { scheduled_time: new Date(mon(15)).toISOString(), print_time_seconds: 2 * HOUR }),
+      pending(4, 'D', 4, { scheduled_time: new Date(mon(16, 45)).toISOString() }),
+    ]);
+    expect(m[3]).toBeUndefined(); // already at 15:00, where it belongs
+    expect(m[4]).toBe(Date.UTC(2026, 10, 17, 9));
+  });
+
+  it('leaves the jobs before the pair alone', () => {
+    const m = swapFirstRightOf2([
+      pending(1, 'Before', 1, { scheduled_time: new Date(mon(11)).toISOString() }),
+      pending(2, 'A', 2, { scheduled_time: new Date(mon(12)).toISOString() }),
+      pending(3, 'B', 3, { scheduled_time: new Date(mon(13)).toISOString() }),
+    ]);
+    expect(m[1]).toBeUndefined();
+  });
+
+  function swapFirstRightOf2(items: PrintQueueItem[]) {
+    const onReschedule = vi.fn();
+    render(
+      <QueueTimelineView
+        queueItems={items}
+        printers={printers}
+        printerStatuses={{}}
+        sjfEnabled={false}
+        officeSchedule={office}
+        onItemClick={() => {}}
+        onReschedule={onReschedule}
+        t={t}
+      />,
+    );
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-2'), { key: 'ArrowRight' });
+    return Object.fromEntries(
+      onReschedule.mock.calls.map(([item, change]) => [item.id, (change.scheduledTime as Date).getTime()]),
+    ) as Record<number, number>;
+  }
 });

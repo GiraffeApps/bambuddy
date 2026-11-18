@@ -1774,9 +1774,9 @@ export default {
       button: 'Smarte Warteschlange',
       tooltip: 'Alle wartenden Aufträge in die Zeitleiste einplanen: möglichst viele Starts während der Bürozeiten, die längsten Drucke zuletzt, damit sie über Nacht laufen',
       locked: 'Druckt (gesperrt)',
-      nudgeEarlier: '15 Min. früher',
-      nudgeLater: '15 Min. später',
-      moveMenu: 'Früher oder später verschieben',
+      swapEarlier: 'Mit dem vorherigen Auftrag tauschen',
+      swapLater: 'Mit dem nächsten Auftrag tauschen',
+      moveMenu: 'Reihenfolge ändern',
       legend: {
         printing: 'Druckt (gesperrt)',
         queued: 'Wartend (ziehen zum Verschieben)',

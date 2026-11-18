@@ -1774,9 +1774,9 @@ export default {
       button: 'Coda intelligente',
       tooltip: 'Posiziona tutti i lavori in coda sulla timeline: il maggior numero di avvii in orario d\'ufficio, le stampe più lunghe per ultime così proseguono di notte',
       locked: 'In stampa (bloccato)',
-      nudgeEarlier: 'Sposta 15 min prima',
-      nudgeLater: 'Sposta 15 min dopo',
-      moveMenu: 'Sposta prima o dopo',
+      swapEarlier: 'Scambia con il lavoro precedente',
+      swapLater: 'Scambia con il lavoro successivo',
+      moveMenu: 'Riordina',
       legend: {
         printing: 'In stampa (bloccato)',
         queued: 'In coda (trascina per spostare)',

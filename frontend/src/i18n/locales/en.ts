@@ -1793,9 +1793,9 @@ export default {
       button: 'Smart queue',
       tooltip: 'Place every queued job on the timeline: as many starts as possible during office hours, longest prints last so they run overnight',
       locked: 'Printing (locked)',
-      nudgeEarlier: 'Move 15 min earlier',
-      nudgeLater: 'Move 15 min later',
-      moveMenu: 'Move earlier or later',
+      swapEarlier: 'Swap with the job before',
+      swapLater: 'Swap with the job after',
+      moveMenu: 'Reorder',
       legend: {
         printing: 'Printing (locked)',
         queued: 'Queued (drag to move)',

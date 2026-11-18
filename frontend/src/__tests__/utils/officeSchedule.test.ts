@@ -4,7 +4,6 @@ import {
   officeScheduleError,
   officeWindowsBetween,
   parseOfficeSchedule,
-  previousOfficeMoment,
   serializeOfficeSchedule,
   type OfficeSchedule,
 } from '../../utils/officeSchedule';
@@ -52,22 +51,14 @@ describe('office schedule', () => {
 
 describe('office moments', () => {
   const monday10 = Date.UTC(2026, 10, 16, 10);
-  const QUARTER = 15 * 60 * 1000;
 
   it('keeps a time inside office hours', () => {
     expect(nextOfficeMoment(weekdays, monday10)).toBe(monday10);
-    expect(previousOfficeMoment(weekdays, monday10, QUARTER)).toBe(monday10);
   });
 
   it('moves an evening start to the next morning', () => {
     expect(nextOfficeMoment(weekdays, Date.UTC(2026, 10, 16, 19))).toBe(Date.UTC(2026, 10, 17, 9));
     // Friday evening goes to Monday.
     expect(nextOfficeMoment(weekdays, Date.UTC(2026, 10, 20, 17))).toBe(Date.UTC(2026, 10, 23, 9));
-  });
-
-  it('moves an evening start back to the last slot before closing', () => {
-    expect(previousOfficeMoment(weekdays, Date.UTC(2026, 10, 16, 19), QUARTER)).toBe(Date.UTC(2026, 10, 16, 16, 45));
-    // Early Monday goes back to Friday afternoon.
-    expect(previousOfficeMoment(weekdays, Date.UTC(2026, 10, 23, 8), QUARTER)).toBe(Date.UTC(2026, 10, 20, 16, 45));
   });
 });

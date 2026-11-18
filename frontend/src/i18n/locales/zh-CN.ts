@@ -1774,9 +1774,9 @@ export default {
       button: '智能排队',
       tooltip: '将所有排队任务排入时间线：在办公时间内尽可能多地开始打印，最长的打印放在最后，让它们通宵运行',
       locked: '打印中（已锁定）',
-      nudgeEarlier: '提前 15 分钟',
-      nudgeLater: '推后 15 分钟',
-      moveMenu: '提前或推后',
+      swapEarlier: '与前一个任务交换',
+      swapLater: '与后一个任务交换',
+      moveMenu: '调整顺序',
       legend: {
         printing: '打印中（已锁定）',
         queued: '排队中（拖动以移动）',

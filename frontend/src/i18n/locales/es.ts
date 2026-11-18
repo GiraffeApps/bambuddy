@@ -1774,9 +1774,9 @@ export default {
       button: 'Cola inteligente',
       tooltip: 'Coloca todos los trabajos en cola en la línea de tiempo: el máximo de inicios en horario de oficina y las impresiones más largas al final para que se impriman de noche',
       locked: 'Imprimiendo (bloqueado)',
-      nudgeEarlier: 'Mover 15 min antes',
-      nudgeLater: 'Mover 15 min después',
-      moveMenu: 'Mover antes o después',
+      swapEarlier: 'Intercambiar con el trabajo anterior',
+      swapLater: 'Intercambiar con el trabajo siguiente',
+      moveMenu: 'Reordenar',
       legend: {
         printing: 'Imprimiendo (bloqueado)',
         queued: 'En cola (arrastra para mover)',
