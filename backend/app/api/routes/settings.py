@@ -704,6 +704,8 @@ _UI_FLAG_FIELDS: tuple[str, ...] = (
     # all to their defaults (with billing on, the print dialog hid the cost
     # centre picker and the print was then refused for lacking one).
     "queue_shortest_first",
+    # The queue page's smart-queue button plans around it.
+    "office_schedule",
     "use_slicer_api",
     "open_in_slicer",
     "preferred_slicer",

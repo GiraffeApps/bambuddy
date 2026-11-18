@@ -1,11 +1,12 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Layers, Printer as PrinterIcon } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { Briefcase, ChevronLeft, ChevronRight, Clock, Layers, Loader2, Lock, Printer as PrinterIcon, Sparkles } from 'lucide-react';
 import { formatDuration, parseUTCDate } from '../utils/date';
 import { compareQueueOrder, queueLaneKey } from '../utils/queueOrder';
 import { isBusyOnlyWaitingReason } from '../utils/waitingReason';
 import type { PrintQueueItem, Printer } from '../api/client';
 import { queueItemThumbnailUrl } from '../utils/queueItemThumbnail';
 import { Button } from './Button';
+import { officeWindowsBetween, type OfficeSchedule } from '../utils/officeSchedule';
 
 /** Gantt-style 24h-rolling timeline. One horizontal swimlane per printer
  *  (plus one per active target_model and one for unassigned items). Each
@@ -21,6 +22,29 @@ const RANGE_MS = RANGE_HOURS * HOUR_MS;
 const MIN_BAR_PX = 32;
 // Lane height for the bar row + label.
 const LANE_BAR_HEIGHT_PX = 40;
+// Dragged bars snap to quarter hours.
+const SNAP_MS = 15 * 60 * 1000;
+// Pointer travel below this is a click, not a drag.
+const DRAG_THRESHOLD_PX = 4;
+
+/** Where a dragged job was dropped: a printer (null = keep its own) and a start. */
+export interface TimelineReschedule {
+  printerId: number | null;
+  scheduledTime: Date;
+}
+
+interface DragState {
+  itemId: number;
+  pointerId: number;
+  originX: number;
+  originY: number;
+  dx: number;
+  dy: number;
+  trackWidthPx: number;
+  originalStartMs: number;
+  laneKey: string;
+  moved: boolean;
+}
 
 interface ScheduleEvent {
   item: PrintQueueItem;
@@ -28,6 +52,9 @@ interface ScheduleEvent {
   estimatedEnd: Date;
   progress?: number;
   type: 'printing' | 'queued';
+  /** Placed for a time (smart queue or drag) but held right now by something
+   *  that needs a person; drawn so the placement isn't lost, flagged. */
+  blockedReason?: string;
 }
 
 interface QueueTimelineViewProps {
@@ -39,6 +66,14 @@ interface QueueTimelineViewProps {
    *  scheduler had no intention of running (#3043). */
   sjfEnabled: boolean;
   onItemClick: (item: PrintQueueItem) => void;
+  /** Drop handler for dragged queued jobs. Omit to make bars read-only. */
+  onReschedule?: (item: PrintQueueItem, change: TimelineReschedule) => void;
+  /** Smart queue: place every queued job around the office schedule. */
+  onSmartQueue?: () => void;
+  smartQueueBusy?: boolean;
+  /** Office hours, shaded on the lanes. Null = not configured. */
+  officeSchedule?: OfficeSchedule | null;
+  onEditOfficeSchedule?: () => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
@@ -65,8 +100,25 @@ export function QueueTimelineView({
   printerStatuses,
   sjfEnabled,
   onItemClick,
+  onReschedule,
+  onSmartQueue,
+  smartQueueBusy = false,
+  officeSchedule = null,
+  onEditOfficeSchedule,
   t,
 }: QueueTimelineViewProps) {
+  // Moves made by dragging, shown straight away and dropped once the queue
+  // the parent passes in changes (i.e. the server has the new values).
+  const [localMoves, setLocalMoves] = useState<Record<number, Partial<PrintQueueItem>>>({});
+  useEffect(() => setLocalMoves({}), [queueItems]);
+  const items = useMemo(
+    () => queueItems.map((item) => (localMoves[item.id] ? { ...item, ...localMoves[item.id] } : item)),
+    [queueItems, localMoves],
+  );
+  const [drag, setDrag] = useState<DragState | null>(null);
+  // A drag ends with a click event on the bar; this swallows it.
+  const suppressClickRef = useRef(false);
+
   // Tick "now" every minute so the NOW line and ETA labels stay live.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -107,7 +159,7 @@ export function QueueTimelineView({
     // Chain-end timestamp per lane (where the next pending item's bar starts).
     const chainEndByLane = new Map<string, number>();
 
-    for (const item of queueItems) {
+    for (const item of items) {
       if (item.status === 'printing') {
         const status = item.printer_id != null ? printerStatuses[item.printer_id] : undefined;
         const start = parseUTCDate(item.started_at) || new Date();
@@ -137,7 +189,9 @@ export function QueueTimelineView({
         // turn behind a print does auto-dispatch, and is the whole point of the
         // chain forecast below.
         if (item.manual_start) continue;
-        if (item.waiting_reason && !isBusyOnlyWaitingReason(item.waiting_reason)) continue;
+        // A job someone placed at a time stays on the timeline, flagged, so
+        // a placement made by the smart queue or a drag doesn't vanish.
+        if (item.waiting_reason && !isBusyOnlyWaitingReason(item.waiting_reason) && !item.scheduled_time) continue;
         const lk = queueLaneKey(item);
         if (!pendingByLaneKey.has(lk)) pendingByLaneKey.set(lk, []);
         pendingByLaneKey.get(lk)!.push(item);
@@ -145,19 +199,23 @@ export function QueueTimelineView({
     }
 
     const sixMonthsFromNow = Date.now() + 180 * 24 * HOUR_MS;
-    for (const [lk, items] of pendingByLaneKey) {
-      items.sort((a, b) => compareQueueOrder(a, b, sjfEnabled));
+    for (const [lk, laneItems] of pendingByLaneKey) {
+      // Jobs due now (ASAP, or scheduled in the past) go in dispatch order;
+      // a job scheduled for later can't start before its time, so the ones
+      // the smart queue (or a drag) placed later follow in time order.
+      const dueMs = (it: PrintQueueItem) => Math.max(nowMs, parseUTCDate(it.scheduled_time)?.getTime() ?? nowMs);
+      laneItems.sort((a, b) => dueMs(a) - dueMs(b) || compareQueueOrder(a, b, sjfEnabled));
       const hasActive = lanesWithActive.has(lk);
       // A lane is timelineable when EITHER it has an active print (chain
       // forecast off its end) OR its first pending item is scheduled (a
       // committed anchor exists). Otherwise every chained ASAP item is just
       // a guess — drop the whole lane to keep the view honest.
-      const firstScheduled = items[0] ? parseUTCDate(items[0].scheduled_time) : null;
+      const firstScheduled = laneItems[0] ? parseUTCDate(laneItems[0].scheduled_time) : null;
       const firstScheduledOk = firstScheduled && firstScheduled.getTime() <= sixMonthsFromNow;
       if (!hasActive && !firstScheduledOk) continue;
 
       let chainEnd = chainEndByLane.get(lk) ?? nowMs;
-      for (const item of items) {
+      for (const item of laneItems) {
         const scheduled = parseUTCDate(item.scheduled_time);
         if (scheduled && scheduled.getTime() <= sixMonthsFromNow) {
           chainEnd = Math.max(chainEnd, scheduled.getTime());
@@ -168,12 +226,14 @@ export function QueueTimelineView({
           estimatedStart: new Date(chainEnd),
           estimatedEnd: new Date(chainEnd + duration),
           type: 'queued',
+          blockedReason:
+            item.waiting_reason && !isBusyOnlyWaitingReason(item.waiting_reason) ? item.waiting_reason : undefined,
         });
         chainEnd += duration;
       }
     }
     return result;
-  }, [queueItems, printerStatuses, nowMs, sjfEnabled]);
+  }, [items, printerStatuses, nowMs, sjfEnabled]);
 
   // Lanes: every printer + every distinct target_model with queue activity
   // + an "unassigned" lane if needed. Printers that have NO events queued
@@ -256,6 +316,71 @@ export function QueueTimelineView({
 
   const trackRef = useRef<HTMLDivElement | null>(null);
 
+  const officeWindows = useMemo(
+    () => (officeSchedule ? officeWindowsBetween(officeSchedule, rangeStartMs, rangeEndMs) : []),
+    [officeSchedule, rangeStartMs, rangeEndMs],
+  );
+
+  const laneByKey = useMemo(() => new Map(lanes.map((lane) => [lane.key, lane])), [lanes]);
+
+  /** Start time and target lane the current drag would drop on. */
+  const dropTarget = (state: DragState) => {
+    const deltaMs = (state.dx / state.trackWidthPx) * RANGE_MS;
+    const startMs = Math.max(nowMs, Math.round((state.originalStartMs + deltaMs) / SNAP_MS) * SNAP_MS);
+    return { startMs, lane: laneByKey.get(state.laneKey) };
+  };
+
+  const handleBarPointerDown = (e: ReactPointerEvent<HTMLButtonElement>, ev: ScheduleEvent) => {
+    if (!onReschedule || ev.type !== 'queued' || e.button !== 0) return;
+    const track = e.currentTarget.parentElement;
+    if (!track) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setDrag({
+      itemId: ev.item.id,
+      pointerId: e.pointerId,
+      originX: e.clientX,
+      originY: e.clientY,
+      dx: 0,
+      dy: 0,
+      trackWidthPx: track.getBoundingClientRect().width || 1,
+      originalStartMs: ev.estimatedStart.getTime(),
+      laneKey: track.dataset.laneKey ?? queueLaneKey(ev.item),
+      moved: false,
+    });
+  };
+
+  const handleBarPointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.originX;
+    const dy = e.clientY - drag.originY;
+    const moved = drag.moved || Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX;
+    // Which lane the pointer is over; only printer lanes accept a drop.
+    const hit = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(e.clientX, e.clientY).find((el) => (el as HTMLElement).dataset?.laneKey)
+      : undefined;
+    const hoveredKey = (hit as HTMLElement | undefined)?.dataset.laneKey;
+    const laneKey = hoveredKey && laneByKey.get(hoveredKey)?.printerId != null ? hoveredKey : drag.laneKey;
+    setDrag({ ...drag, dx, dy, moved, laneKey });
+  };
+
+  const handleBarPointerUp = (e: ReactPointerEvent<HTMLButtonElement>, ev: ScheduleEvent) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    setDrag(null);
+    if (!drag.moved || !onReschedule) return;
+    suppressClickRef.current = true;
+    const { startMs, lane } = dropTarget(drag);
+    const printerId = lane?.printerId != null && lane.printerId !== ev.item.printer_id ? lane.printerId : null;
+    const scheduledTime = new Date(startMs);
+    setLocalMoves((moves) => ({
+      ...moves,
+      [ev.item.id]: {
+        scheduled_time: scheduledTime.toISOString(),
+        ...(printerId != null ? { printer_id: printerId, target_model: null } : {}),
+      },
+    }));
+    onReschedule(ev.item, { printerId, scheduledTime });
+  };
+
   return (
     <div>
       {/* Window controls */}
@@ -301,19 +426,68 @@ export function QueueTimelineView({
             </Button>
           )}
         </div>
-        {allDoneBy && (
-          <span className="text-xs text-bambu-gray flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" />
-            {t('queue.timeline.allDoneBy', {
-              time: allDoneBy.toLocaleString(undefined, {
-                weekday: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-            })}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {allDoneBy && (
+            <span className="text-xs text-bambu-gray flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              {t('queue.timeline.allDoneBy', {
+                time: allDoneBy.toLocaleString(undefined, {
+                  weekday: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              })}
+            </span>
+          )}
+          {onEditOfficeSchedule && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onEditOfficeSchedule}
+              title={t('queue.smartQueue.schedule.title')}
+              className="text-xs"
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              {officeSchedule
+                ? `${officeSchedule.start}–${officeSchedule.end}`
+                : t('queue.smartQueue.schedule.button')}
+            </Button>
+          )}
+          {onSmartQueue && (
+            <Button
+              size="sm"
+              onClick={onSmartQueue}
+              disabled={smartQueueBusy}
+              title={t('queue.smartQueue.tooltip')}
+            >
+              {smartQueueBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {t('queue.smartQueue.button')}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {(onReschedule || officeSchedule) && (
+        <div className="flex flex-wrap items-center gap-4 mb-3 text-[11px] text-bambu-gray">
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm bg-amber-500/30 border border-amber-400/70" aria-hidden />
+            <Lock className="w-3 h-3" aria-hidden />
+            {t('queue.smartQueue.legend.printing')}
+          </span>
+          {onReschedule && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-bambu-green/20 border border-bambu-green/40" aria-hidden />
+              {t('queue.smartQueue.legend.queued')}
+            </span>
+          )}
+          {officeSchedule && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-bambu-green/10 border border-dashed border-bambu-green/30" aria-hidden />
+              {t('queue.smartQueue.legend.officeHours')}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Empty-state notice when the fleet is idle and no queued item is
           committed (no scheduled_time / no active print to chain off).
@@ -367,9 +541,28 @@ export function QueueTimelineView({
                     <span className="text-sm text-white truncate">{lane.label}</span>
                   </div>
                   <div
-                    className="relative flex-1"
+                    className={`relative flex-1 ${
+                      drag?.moved && drag.laneKey === lane.key ? 'ring-1 ring-inset ring-bambu-green/60' : ''
+                    }`}
                     style={{ height: LANE_BAR_HEIGHT_PX + 16 }}
+                    data-lane-key={lane.key}
                   >
+                    {/* Office hours: when someone is in to start a print. */}
+                    {officeWindows.map((w) => {
+                      const from = Math.max(rangeStartMs, w.startMs);
+                      const to = Math.min(rangeEndMs, w.endMs);
+                      return (
+                        <div
+                          key={w.startMs}
+                          className="absolute top-0 bottom-0 bg-bambu-green/10 pointer-events-none"
+                          style={{
+                            left: `${((from - rangeStartMs) / RANGE_MS) * 100}%`,
+                            width: `${((to - from) / RANGE_MS) * 100}%`,
+                          }}
+                          aria-hidden
+                        />
+                      );
+                    })}
                     {/* Hour grid lines */}
                     {hourTicks.map((tick) => (
                       <div
@@ -404,32 +597,57 @@ export function QueueTimelineView({
                       const thumbnailUrl = queueItemThumbnailUrl(ev.item);
                       const isPrinting = ev.type === 'printing';
                       const isBatched = ev.item.batch_id != null;
+                      const draggable = !isPrinting && onReschedule != null;
+                      const dragging = drag?.itemId === ev.item.id && drag.moved ? drag : null;
+                      const dropStart = dragging ? dropTarget(dragging).startMs : null;
                       const tooltipParts = [
                         displayName,
                         `${formatTooltipTime(ev.estimatedStart)} → ${formatTooltipTime(ev.estimatedEnd)}`,
                         ev.item.print_time_seconds ? formatDuration(ev.item.print_time_seconds) : null,
                         isPrinting && ev.progress != null ? `${Math.round(ev.progress)}%` : null,
                         ev.item.batch_name ? `batch: ${ev.item.batch_name}` : null,
+                        isPrinting && onReschedule ? t('queue.smartQueue.locked') : null,
+                        ev.blockedReason ?? null,
                       ].filter(Boolean).join(' · ');
                       return (
                         <button
                           key={ev.item.id}
-                          onClick={() => onItemClick(ev.item)}
+                          onClick={() => {
+                            if (suppressClickRef.current) {
+                              suppressClickRef.current = false;
+                              return;
+                            }
+                            onItemClick(ev.item);
+                          }}
+                          onPointerDown={draggable ? (e) => handleBarPointerDown(e, ev) : undefined}
+                          onPointerMove={draggable ? handleBarPointerMove : undefined}
+                          onPointerUp={draggable ? (e) => handleBarPointerUp(e, ev) : undefined}
+                          onPointerCancel={draggable ? () => setDrag(null) : undefined}
                           title={tooltipParts}
-                          className={`absolute rounded-md transition-all hover:brightness-110 hover:z-10 overflow-hidden flex items-center gap-1.5 px-1.5 text-left ${
+                          data-testid={`timeline-bar-${ev.item.id}`}
+                          data-locked={isPrinting ? 'true' : undefined}
+                          className={`absolute rounded-md hover:brightness-110 hover:z-10 overflow-hidden flex items-center gap-1.5 px-1.5 text-left touch-none ${
+                            dragging ? 'z-30 opacity-90 shadow-lg ring-2 ring-bambu-green cursor-grabbing' : 'transition-all'
+                          } ${draggable && !dragging ? 'cursor-grab' : ''} ${
                             isPrinting
-                              ? 'bg-blue-500/30 border border-blue-400/60'
-                              : isBatched
-                                ? 'bg-cyan-500/20 border border-cyan-400/50'
-                                : 'bg-bambu-green/20 border border-bambu-green/40'
+                              ? 'bg-amber-500/30 border border-amber-400/70'
+                              : ev.blockedReason
+                                ? 'bg-bambu-green/10 border border-dashed border-red-400/70'
+                                : isBatched
+                                  ? 'bg-cyan-500/20 border border-cyan-400/50'
+                                  : 'bg-bambu-green/20 border border-bambu-green/40'
                           }`}
                           style={{
                             left: `${leftPct}%`,
                             width: `max(${MIN_BAR_PX}px, ${widthPct}%)`,
                             top: 8,
                             height: LANE_BAR_HEIGHT_PX,
+                            transform: dragging ? `translate(${dragging.dx}px, ${dragging.dy}px)` : undefined,
                           }}
                         >
+                          {isPrinting && (
+                            <Lock className="w-3 h-3 shrink-0 text-amber-300" aria-label={t('queue.smartQueue.locked')} />
+                          )}
                           {thumbnailUrl && (
                             <img
                               src={thumbnailUrl}
@@ -446,9 +664,14 @@ export function QueueTimelineView({
                               {isPrinting && ev.progress != null ? ` · ${Math.round(ev.progress)}%` : ''}
                             </div>
                           </div>
+                          {dropStart != null && (
+                            <span className="absolute -top-0.5 right-1 text-[10px] font-medium text-white bg-bambu-dark/80 rounded px-1">
+                              {formatTooltipTime(new Date(dropStart))}
+                            </span>
+                          )}
                           {isPrinting && ev.progress != null && (
                             <div
-                              className="absolute bottom-0 left-0 h-0.5 bg-blue-300"
+                              className="absolute bottom-0 left-0 h-0.5 bg-amber-300"
                               style={{ width: `${ev.progress}%` }}
                               aria-hidden
                             />

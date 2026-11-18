@@ -1768,6 +1768,39 @@ export default {
       },
       printerColumnHeader: 'プリンター',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'スマートキュー',
+      tooltip: '待機中のジョブをすべてタイムラインに配置します。勤務時間内の開始数を最大化し、長い印刷は夜通し動くよう最後に回します',
+      locked: '印刷中（ロック）',
+      legend: {
+        printing: '印刷中（ロック）',
+        queued: '待機中（ドラッグで移動）',
+        officeHours: '勤務時間',
+      },
+      schedule: {
+        button: '勤務時間',
+        title: '勤務時間',
+        description: 'スマートキューは、印刷を開始しプレートを片付ける人がいる時間帯にだけ印刷を開始します。長い印刷は一日の最後に回し、夜通し印刷します。',
+        days: '勤務日',
+        start: '開始',
+        end: '終了',
+        timezone: '時刻は {{timezone}} です。',
+        error: {
+          noDays: '勤務日を1日以上選択してください。',
+          badTime: '両方の時刻を HH:MM で入力してください。',
+          endBeforeStart: '終了時刻は開始時刻より後にしてください。',
+        },
+      },
+      toast: {
+        placed: '{{count}} 件のジョブをタイムラインに配置しました',
+        unplaced: '{{count}} 件のジョブを配置できませんでした：対応するプリンターがありません',
+        nothingToPlace: '配置する待機中のジョブがありません',
+        failed: 'スマートキューに失敗しました',
+        scheduleSaved: '勤務時間を保存しました',
+        moveFailed: 'ジョブを移動できませんでした',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: '印刷を停止する権限がありません',

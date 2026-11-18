@@ -565,3 +565,26 @@ class PrintBatchResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SmartScheduleRequest(BaseModel):
+    """Run the smart queue planner over every pending job (see services/smart_queue)."""
+
+    # Plan only, write nothing: lets the UI preview before committing.
+    dry_run: bool = False
+
+
+class SmartSchedulePlacement(BaseModel):
+    item_id: int
+    printer_id: int
+    scheduled_time: datetime
+    estimated_end: datetime
+    # The day's last start on that printer, left to run overnight.
+    overnight: bool
+
+
+class SmartScheduleResponse(BaseModel):
+    placements: list[SmartSchedulePlacement]
+    # Pending jobs no printer could take (no printer of their model, etc.).
+    unplaced_item_ids: list[int]
+    applied: bool

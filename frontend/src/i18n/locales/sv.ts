@@ -1786,6 +1786,39 @@ export default {
       },
       printerColumnHeader: 'Skrivare',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Smart kö',
+      tooltip: 'Placera alla köade jobb på tidslinjen: så många starter som möjligt under kontorstid, de längsta utskrifterna sist så att de går över natten',
+      locked: 'Skriver ut (låst)',
+      legend: {
+        printing: 'Skriver ut (låst)',
+        queued: 'I kö (dra för att flytta)',
+        officeHours: 'Kontorstid',
+      },
+      schedule: {
+        button: 'Kontorstid',
+        title: 'Kontorstid',
+        description: 'Den smarta kön startar bara utskrifter när någon är på plats för att starta dem och tömma plattor. Längre utskrifter läggs i slutet av dagen så att de går över natten.',
+        days: 'Arbetsdagar',
+        start: 'Öppnar',
+        end: 'Stänger',
+        timezone: 'Tiderna är i {{timezone}}.',
+        error: {
+          noDays: 'Välj minst en arbetsdag.',
+          badTime: 'Ange båda tiderna som HH:MM.',
+          endBeforeStart: 'Stängningstiden måste vara efter öppningstiden.',
+        },
+      },
+      toast: {
+        placed: '{{count}} jobb placerade på tidslinjen',
+        unplaced: '{{count}} jobb kunde inte placeras: ingen matchande skrivare',
+        nothingToPlace: 'Inga köade jobb att placera',
+        failed: 'Smart kö misslyckades',
+        scheduleSaved: 'Kontorstid sparad',
+        moveFailed: 'Kunde inte flytta jobbet',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'Du har inte behörighet att stoppa utskrifter',

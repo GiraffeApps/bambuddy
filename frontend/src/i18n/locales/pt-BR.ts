@@ -1769,6 +1769,39 @@ export default {
       },
       printerColumnHeader: 'Impressora',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Fila inteligente',
+      tooltip: 'Coloca todos os trabalhos da fila na linha do tempo: o máximo de inícios no horário comercial, as impressões mais longas por último para rodarem à noite',
+      locked: 'Imprimindo (bloqueado)',
+      legend: {
+        printing: 'Imprimindo (bloqueado)',
+        queued: 'Na fila (arraste para mover)',
+        officeHours: 'Horário comercial',
+      },
+      schedule: {
+        button: 'Horário comercial',
+        title: 'Horário comercial',
+        description: 'A fila inteligente só inicia impressões quando há alguém para iniciá-las e limpar as placas. As impressões mais longas ficam para o fim do dia e rodam durante a noite.',
+        days: 'Dias úteis',
+        start: 'Abre',
+        end: 'Fecha',
+        timezone: 'Horários em {{timezone}}.',
+        error: {
+          noDays: 'Escolha pelo menos um dia útil.',
+          badTime: 'Informe os dois horários como HH:MM.',
+          endBeforeStart: 'O horário de fechamento deve ser depois da abertura.',
+        },
+      },
+      toast: {
+        placed: '{{count}} trabalho(s) colocado(s) na linha do tempo',
+        unplaced: '{{count}} trabalho(s) não puderam ser colocados: nenhuma impressora compatível',
+        nothingToPlace: 'Nenhum trabalho na fila para colocar',
+        failed: 'Falha na fila inteligente',
+        scheduleSaved: 'Horário comercial salvo',
+        moveFailed: 'Não foi possível mover o trabalho',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'Você não tem permissão para parar impressões',

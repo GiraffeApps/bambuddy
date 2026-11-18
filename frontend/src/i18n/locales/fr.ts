@@ -1769,6 +1769,39 @@ export default {
       },
       printerColumnHeader: 'Imprimante',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'File intelligente',
+      tooltip: 'Placer toutes les tâches en attente sur la chronologie : un maximum de démarrages pendant les heures de bureau, les impressions les plus longues en dernier pour qu\'elles tournent la nuit',
+      locked: 'En impression (verrouillé)',
+      legend: {
+        printing: 'En impression (verrouillé)',
+        queued: 'En attente (glisser pour déplacer)',
+        officeHours: 'Heures de bureau',
+      },
+      schedule: {
+        button: 'Heures de bureau',
+        title: 'Heures de bureau',
+        description: 'La file intelligente ne lance des impressions que lorsque quelqu\'un est présent pour les démarrer et vider les plateaux. Les impressions les plus longues sont placées en fin de journée pour tourner la nuit.',
+        days: 'Jours ouvrés',
+        start: 'Ouverture',
+        end: 'Fermeture',
+        timezone: 'Heures exprimées en {{timezone}}.',
+        error: {
+          noDays: 'Choisissez au moins un jour ouvré.',
+          badTime: 'Saisissez les deux heures au format HH:MM.',
+          endBeforeStart: 'L\'heure de fermeture doit suivre l\'heure d\'ouverture.',
+        },
+      },
+      toast: {
+        placed: '{{count}} tâche(s) placée(s) sur la chronologie',
+        unplaced: '{{count}} tâche(s) n\'ont pas pu être placées : aucune imprimante compatible',
+        nothingToPlace: 'Aucune tâche en attente à placer',
+        failed: 'Échec de la file intelligente',
+        scheduleSaved: 'Heures de bureau enregistrées',
+        moveFailed: 'Impossible de déplacer la tâche',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'Pas d\'autorisation d\'arrêt',

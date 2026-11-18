@@ -1635,6 +1635,9 @@ export interface AppSettings {
   require_plate_clear: boolean;
   // Shortest job first scheduling
   queue_shortest_first: boolean;
+  // Smart queue office schedule: JSON {days, start, end, timezone}, '' = unset.
+  // See utils/officeSchedule.ts.
+  office_schedule: string;
   // How many printers the queue may upload to at once (#2555). 1 restores the
   // old strictly-serial behaviour, where every printer waited out every other
   // printer's transfer.
@@ -3094,6 +3097,21 @@ export interface PrintBatchDispatchRequest {
   only_plate?: boolean;
   /** Cap on items created across all plates; omit to queue everything owed. */
   limit?: number;
+}
+
+export interface SmartSchedulePlacement {
+  item_id: number;
+  printer_id: number;
+  scheduled_time: string;
+  estimated_end: string;
+  /** The day's last start on that printer, left to run overnight. */
+  overnight: boolean;
+}
+
+export interface SmartScheduleResult {
+  placements: SmartSchedulePlacement[];
+  unplaced_item_ids: number[];
+  applied: boolean;
 }
 
 export interface PrintQueueItemUpdate {
@@ -6862,6 +6880,13 @@ export const api = {
    *  last run a batch order could re-queue its plate from (#2960). */
   removeFromQueue: (id: number) =>
     request<{ message: string; deleted: boolean }>(`/queue/${id}`, { method: 'DELETE' }),
+  /** Lay every pending job out on printers and start times around the office
+   *  schedule. `dryRun` plans without writing. */
+  smartScheduleQueue: (dryRun = false) =>
+    request<SmartScheduleResult>('/queue/smart-schedule', {
+      method: 'POST',
+      body: JSON.stringify({ dry_run: dryRun }),
+    }),
   reorderQueue: (items: { id: number; position: number }[]) =>
     request<{ message: string }>('/queue/reorder', {
       method: 'POST',

@@ -1788,6 +1788,39 @@ export default {
       },
       printerColumnHeader: 'Drukarka',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Inteligentna kolejka',
+      tooltip: 'Umieść wszystkie zadania z kolejki na osi czasu: jak najwięcej startów w godzinach pracy, najdłuższe wydruki na koniec, aby drukowały się w nocy',
+      locked: 'Drukowanie (zablokowane)',
+      legend: {
+        printing: 'Drukowanie (zablokowane)',
+        queued: 'W kolejce (przeciągnij, aby przenieść)',
+        officeHours: 'Godziny pracy',
+      },
+      schedule: {
+        button: 'Godziny pracy',
+        title: 'Godziny pracy',
+        description: 'Inteligentna kolejka uruchamia wydruki tylko wtedy, gdy ktoś jest na miejscu, aby je rozpocząć i zdjąć wydruk z płyty. Dłuższe wydruki zostają na koniec dnia i drukują się w nocy.',
+        days: 'Dni robocze',
+        start: 'Otwarcie',
+        end: 'Zamknięcie',
+        timezone: 'Godziny w strefie {{timezone}}.',
+        error: {
+          noDays: 'Wybierz co najmniej jeden dzień roboczy.',
+          badTime: 'Wpisz obie godziny w formacie HH:MM.',
+          endBeforeStart: 'Godzina zamknięcia musi być późniejsza niż otwarcia.',
+        },
+      },
+      toast: {
+        placed: 'Umieszczono na osi czasu zadania: {{count}}',
+        unplaced: 'Nie udało się umieścić zadań: {{count}} (brak pasującej drukarki)',
+        nothingToPlace: 'Brak zadań w kolejce do umieszczenia',
+        failed: 'Inteligentna kolejka nie powiodła się',
+        scheduleSaved: 'Zapisano godziny pracy',
+        moveFailed: 'Nie udało się przenieść zadania',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'Nie masz uprawnień do zatrzymywania wydruków',

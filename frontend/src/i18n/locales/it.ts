@@ -1769,6 +1769,39 @@ export default {
       },
       printerColumnHeader: 'Stampante',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Coda intelligente',
+      tooltip: 'Posiziona tutti i lavori in coda sulla timeline: il maggior numero di avvii in orario d\'ufficio, le stampe più lunghe per ultime così proseguono di notte',
+      locked: 'In stampa (bloccato)',
+      legend: {
+        printing: 'In stampa (bloccato)',
+        queued: 'In coda (trascina per spostare)',
+        officeHours: 'Orario d\'ufficio',
+      },
+      schedule: {
+        button: 'Orario d\'ufficio',
+        title: 'Orario d\'ufficio',
+        description: 'La coda intelligente avvia le stampe solo quando c\'è qualcuno per avviarle e liberare i piatti. Le stampe più lunghe vengono lasciate a fine giornata così proseguono di notte.',
+        days: 'Giorni lavorativi',
+        start: 'Apertura',
+        end: 'Chiusura',
+        timezone: 'Orari in {{timezone}}.',
+        error: {
+          noDays: 'Scegli almeno un giorno lavorativo.',
+          badTime: 'Inserisci entrambi gli orari come HH:MM.',
+          endBeforeStart: 'L\'orario di chiusura deve essere dopo quello di apertura.',
+        },
+      },
+      toast: {
+        placed: '{{count}} lavoro/i posizionato/i sulla timeline',
+        unplaced: 'Impossibile posizionare {{count}} lavoro/i: nessuna stampante compatibile',
+        nothingToPlace: 'Nessun lavoro in coda da posizionare',
+        failed: 'Coda intelligente non riuscita',
+        scheduleSaved: 'Orario d\'ufficio salvato',
+        moveFailed: 'Impossibile spostare il lavoro',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'Non hai il permesso di fermare stampe',

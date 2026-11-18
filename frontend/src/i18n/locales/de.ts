@@ -1769,6 +1769,39 @@ export default {
       },
       printerColumnHeader: 'Drucker',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Smarte Warteschlange',
+      tooltip: 'Alle wartenden Aufträge in die Zeitleiste einplanen: möglichst viele Starts während der Bürozeiten, die längsten Drucke zuletzt, damit sie über Nacht laufen',
+      locked: 'Druckt (gesperrt)',
+      legend: {
+        printing: 'Druckt (gesperrt)',
+        queued: 'Wartend (ziehen zum Verschieben)',
+        officeHours: 'Bürozeiten',
+      },
+      schedule: {
+        button: 'Bürozeiten',
+        title: 'Bürozeiten',
+        description: 'Die smarte Warteschlange startet Drucke nur, wenn jemand da ist, um sie zu starten und Druckplatten zu leeren. Längere Drucke kommen ans Ende des Tages und laufen über Nacht.',
+        days: 'Arbeitstage',
+        start: 'Beginn',
+        end: 'Ende',
+        timezone: 'Zeiten in {{timezone}}.',
+        error: {
+          noDays: 'Wähle mindestens einen Arbeitstag.',
+          badTime: 'Gib beide Zeiten als HH:MM ein.',
+          endBeforeStart: 'Das Ende muss nach dem Beginn liegen.',
+        },
+      },
+      toast: {
+        placed: '{{count}} Auftrag/Aufträge in die Zeitleiste eingeplant',
+        unplaced: '{{count}} Auftrag/Aufträge konnten nicht eingeplant werden: kein passender Drucker',
+        nothingToPlace: 'Keine wartenden Aufträge zum Einplanen',
+        failed: 'Smarte Warteschlange fehlgeschlagen',
+        scheduleSaved: 'Bürozeiten gespeichert',
+        moveFailed: 'Auftrag konnte nicht verschoben werden',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'Sie haben keine Berechtigung, Drucke zu stoppen',

@@ -1769,6 +1769,39 @@ export default {
       },
       printerColumnHeader: 'Yazıcı',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Akıllı kuyruk',
+      tooltip: 'Kuyruktaki tüm işleri zaman çizelgesine yerleştir: mesai saatlerinde mümkün olduğunca çok başlatma, en uzun baskılar gece sürsün diye en sona',
+      locked: 'Yazdırılıyor (kilitli)',
+      legend: {
+        printing: 'Yazdırılıyor (kilitli)',
+        queued: 'Kuyrukta (taşımak için sürükleyin)',
+        officeHours: 'Mesai saatleri',
+      },
+      schedule: {
+        button: 'Mesai saatleri',
+        title: 'Mesai saatleri',
+        description: 'Akıllı kuyruk, baskıları yalnızca başlatacak ve plakaları boşaltacak biri varken başlatır. Uzun baskılar günün sonuna bırakılır ve gece boyunca sürer.',
+        days: 'Çalışma günleri',
+        start: 'Açılış',
+        end: 'Kapanış',
+        timezone: 'Saatler {{timezone}} saat dilimindedir.',
+        error: {
+          noDays: 'En az bir çalışma günü seçin.',
+          badTime: 'Her iki saati de SS:DD olarak girin.',
+          endBeforeStart: 'Kapanış saati açılıştan sonra olmalıdır.',
+        },
+      },
+      toast: {
+        placed: '{{count}} iş zaman çizelgesine yerleştirildi',
+        unplaced: '{{count}} iş yerleştirilemedi: uygun yazıcı yok',
+        nothingToPlace: 'Yerleştirilecek kuyrukta iş yok',
+        failed: 'Akıllı kuyruk başarısız oldu',
+        scheduleSaved: 'Mesai saatleri kaydedildi',
+        moveFailed: 'İş taşınamadı',
+      },
+    },
     // İzinler
     permissions: {
       noStopPrint: 'Baskıları durdurma izniniz yok',

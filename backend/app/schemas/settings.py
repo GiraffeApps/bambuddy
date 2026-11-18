@@ -491,6 +491,13 @@ class AppSettings(BaseModel):
         default=False,
         description="Shortest Job First — scheduler prioritizes shorter print jobs over longer ones",
     )
+    # Smart queue: the hours someone is in to start prints / clear plates. JSON
+    # {"days": [0..6, Monday=0], "start": "HH:MM", "end": "HH:MM",
+    # "timezone": IANA name}. Empty = not configured yet.
+    office_schedule: str = Field(
+        default="",
+        description="Office schedule used by the smart queue (JSON: days, start, end, timezone). Empty = not set.",
+    )
     queue_max_concurrent_uploads: int = Field(
         default=4,
         ge=1,
@@ -855,6 +862,7 @@ class AppSettingsUpdate(BaseModel):
     require_plate_clear: bool | None = None
     queue_shortest_first: bool | None = None
     queue_max_concurrent_uploads: int | None = Field(default=None, ge=1, le=16)
+    office_schedule: str | None = None
     preheat_enabled: bool | None = None
     preheat_filament_targets: str | None = None
     preheat_max_wait_seconds: int | None = Field(default=None, ge=60, le=3600)
@@ -1012,6 +1020,19 @@ class AppSettingsUpdate(BaseModel):
         v = v.strip()
         if any(ord(char) < 33 or ord(char) > 126 for char in v):
             raise ValueError("octoeverywhere_api_key must contain only printable ASCII characters without spaces")
+        return v
+
+    @field_validator("office_schedule")
+    @classmethod
+    def validate_office_schedule(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return v
+        from backend.app.services.smart_queue import OfficeSchedule
+
+        try:
+            OfficeSchedule.parse(v)
+        except json.JSONDecodeError:
+            raise ValueError("office_schedule must be valid JSON or empty")
         return v
 
     @field_validator("obico_enabled_printers", "octoeverywhere_enabled_printers")

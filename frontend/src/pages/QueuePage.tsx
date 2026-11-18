@@ -86,7 +86,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { QueueStatsBar } from '../components/QueueStatsBar';
 import { CompactHistoryRow } from '../components/CompactHistoryRow';
 import { ColorSubstitutionNotes } from '../components/ColorSubstitutionNotes';
-import { QueueTimelineView } from '../components/QueueTimelineView';
+import { QueueTimelineView, type TimelineReschedule } from '../components/QueueTimelineView';
+import { OfficeScheduleModal } from '../components/OfficeScheduleModal';
+import {
+  defaultOfficeSchedule,
+  parseOfficeSchedule,
+  serializeOfficeSchedule,
+  type OfficeSchedule,
+} from '../utils/officeSchedule';
 import { compareQueueOrder } from '../utils/queueOrder';
 import { BatchOrdersView } from '../components/BatchOrdersView';
 import { ThumbnailHoverPreview } from '../components/ThumbnailHoverPreview';
@@ -1931,6 +1938,69 @@ export function QueuePage() {
     queryFn: () => api.getPrinters(),
   });
 
+  // Smart queue (timeline tab): the office schedule it plans around, the run
+  // itself, and drag-to-reschedule.
+  const officeSchedule = useMemo(() => parseOfficeSchedule(settings?.office_schedule), [settings?.office_schedule]);
+  const [showOfficeSchedule, setShowOfficeSchedule] = useState(false);
+  // Set when Smart queue was pressed before any schedule existed: saving the
+  // schedule then carries on with the run the user asked for.
+  const [smartQueueAfterSave, setSmartQueueAfterSave] = useState(false);
+
+  const smartQueueMutation = useMutation({
+    mutationFn: () => api.smartScheduleQueue(),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['queue'] });
+      if (result.placements.length === 0 && result.unplaced_item_ids.length === 0) {
+        showToast(t('queue.smartQueue.toast.nothingToPlace'));
+        return;
+      }
+      showToast(t('queue.smartQueue.toast.placed', { count: result.placements.length }));
+      if (result.unplaced_item_ids.length > 0) {
+        showToast(t('queue.smartQueue.toast.unplaced', { count: result.unplaced_item_ids.length }), 'warning');
+      }
+    },
+    onError: (error: Error) => showToast(error.message || t('queue.smartQueue.toast.failed'), 'error'),
+  });
+
+  const officeScheduleMutation = useMutation({
+    mutationFn: (schedule: OfficeSchedule) => api.updateSettings({ office_schedule: serializeOfficeSchedule(schedule) }),
+    onSuccess: async () => {
+      setShowOfficeSchedule(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['ui-settings'] }),
+      ]);
+      showToast(t('queue.smartQueue.toast.scheduleSaved'));
+      if (smartQueueAfterSave) {
+        setSmartQueueAfterSave(false);
+        smartQueueMutation.mutate();
+      }
+    },
+    onError: (error: Error) => showToast(error.message || t('queue.smartQueue.toast.failed'), 'error'),
+  });
+
+  const rescheduleMutation = useMutation({
+    mutationFn: ({ item, change }: { item: PrintQueueItem; change: TimelineReschedule }) =>
+      api.updateQueueItem(item.id, {
+        scheduled_time: change.scheduledTime.toISOString(),
+        ...(change.printerId != null ? { printer_id: change.printerId, target_model: null, target_location: null } : {}),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['queue'] }),
+    onError: (error: Error) => {
+      queryClient.invalidateQueries({ queryKey: ['queue'] });
+      showToast(error.message || t('queue.smartQueue.toast.moveFailed'), 'error');
+    },
+  });
+
+  const handleSmartQueue = () => {
+    if (!officeSchedule) {
+      setSmartQueueAfterSave(true);
+      setShowOfficeSchedule(true);
+      return;
+    }
+    smartQueueMutation.mutate();
+  };
+
   const sjfMutation = useMutation({
     mutationFn: (enabled: boolean) => api.updateSettings({ queue_shortest_first: enabled }),
     onSuccess: () => {
@@ -2951,11 +3021,35 @@ export function QueuePage() {
           </p>
         </Card>
       ) : activeTab === 'timeline' ? (
+        <>
+        {showOfficeSchedule && (
+          <OfficeScheduleModal
+            initial={officeSchedule ?? defaultOfficeSchedule()}
+            isSaving={officeScheduleMutation.isPending}
+            onSave={(schedule) => officeScheduleMutation.mutate(schedule)}
+            onCancel={() => {
+              setShowOfficeSchedule(false);
+              setSmartQueueAfterSave(false);
+            }}
+            t={t}
+          />
+        )}
         <QueueTimelineView
           queueItems={queue || []}
           printers={printers || []}
           printerStatuses={printerStatusMap}
           sjfEnabled={settings?.queue_shortest_first ?? false}
+          officeSchedule={officeSchedule}
+          onSmartQueue={hasPermission('queue:update_all' as Permission) ? handleSmartQueue : undefined}
+          smartQueueBusy={smartQueueMutation.isPending}
+          onEditOfficeSchedule={
+            hasPermission('settings:update' as Permission) ? () => setShowOfficeSchedule(true) : undefined
+          }
+          onReschedule={
+            hasPermission('queue:update_all' as Permission) || hasPermission('queue:update_own' as Permission)
+              ? (item, change) => rescheduleMutation.mutate({ item, change })
+              : undefined
+          }
           onItemClick={(item) => {
             if (['completed', 'failed', 'skipped', 'cancelled'].includes(item.status)) {
               setRequeueItem(item);
@@ -2967,6 +3061,7 @@ export function QueuePage() {
           }}
           t={t}
         />
+        </>
       ) : activeTab === 'history' ? (
         <HistorySection
           items={historyItems}
