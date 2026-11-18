@@ -244,3 +244,87 @@ describe('QueueTimelineView placed jobs that are held', () => {
     expect(bar.getAttribute('title')).toContain('Offline, no Auto On smart plug');
   });
 });
+
+describe('QueueTimelineView cards', () => {
+  it('keeps the progress bar on an in-progress card even before the printer reports progress', () => {
+    render(
+      <QueueTimelineView
+        queueItems={[running]}
+        printers={printers}
+        printerStatuses={{}}
+        sjfEnabled={false}
+        onItemClick={() => {}}
+        onReschedule={() => {}}
+        t={t}
+      />,
+    );
+    // Started 30 min into a one-hour print.
+    const bar = screen.getByTestId('timeline-progress-100');
+    expect(parseFloat(bar.style.width)).toBeGreaterThan(40);
+    expect(parseFloat(bar.style.width)).toBeLessThan(60);
+  });
+
+  it('uses the printer-reported progress when there is one', () => {
+    render(
+      <QueueTimelineView
+        queueItems={[running]}
+        printers={printers}
+        printerStatuses={{ 1: { progress: 72, remaining_time: 20, state: 'RUNNING' } }}
+        sjfEnabled={false}
+        onItemClick={() => {}}
+        t={t}
+      />,
+    );
+    expect(screen.getByTestId('timeline-progress-100').style.width).toBe('72%');
+  });
+
+  it('never widens a short card into the next one', () => {
+    render(
+      <QueueTimelineView
+        queueItems={[
+          running,
+          pending(1, 'Tiny job', 1, { print_time_seconds: 60 }),
+          pending(2, 'Next job', 2),
+        ]}
+        printers={printers}
+        printerStatuses={statuses}
+        sjfEnabled={false}
+        onItemClick={() => {}}
+        t={t}
+      />,
+    );
+    const tiny = screen.getByTestId('timeline-bar-1');
+    const next = screen.getByTestId('timeline-bar-2');
+    const tinyLeft = parseFloat(tiny.style.left);
+    const nextLeft = parseFloat(next.style.left);
+    // The width is capped at the gap to the next card's left edge.
+    const cap = tiny.style.width.match(/,\s*([\d.]+)%\)$/);
+    expect(cap).not.toBeNull();
+    expect(tinyLeft + parseFloat(cap![1])).toBeLessThanOrEqual(nextLeft + 1e-9);
+  });
+
+  it('a job dropped onto another card starts when that card ends', () => {
+    const onReschedule = vi.fn();
+    render(
+      <QueueTimelineView
+        queueItems={[running, pending(1, 'First', 1), pending(2, 'Second', 2)]}
+        printers={printers}
+        printerStatuses={statuses}
+        sjfEnabled={false}
+        onItemClick={() => {}}
+        onReschedule={onReschedule}
+        t={t}
+      />,
+    );
+    // Second is chained 30 min + 1 h from now; drag it 50 px (30 min) left,
+    // into the middle of First.
+    const bar = screen.getByTestId('timeline-bar-2');
+    fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 500, clientY: 10 });
+    fireEvent.pointerMove(bar, { pointerId: 1, clientX: 450, clientY: 10 });
+    fireEvent.pointerUp(bar, { pointerId: 1, clientX: 450, clientY: 10 });
+
+    const firstEnd = Date.now() + 30 * 60 * 1000 + HOUR_MS;
+    const start = (onReschedule.mock.calls[0][1].scheduledTime as Date).getTime();
+    expect(Math.abs(start - firstEnd)).toBeLessThan(5000);
+  });
+});

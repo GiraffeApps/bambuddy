@@ -166,6 +166,10 @@ export function QueueTimelineView({
         let endTime: Date;
         if (status?.remaining_time != null && status.remaining_time > 0) {
           endTime = new Date(nowMs + status.remaining_time * 60 * 1000);
+        } else if (item.print_time_seconds && status?.progress == null && item.started_at) {
+          // No word from the printer yet: assume it runs to its slicer estimate
+          // from when it started (and is at least a minute from done).
+          endTime = new Date(Math.max(start.getTime() + item.print_time_seconds * 1000, nowMs + 60_000));
         } else if (item.print_time_seconds) {
           const progress = status?.progress || 0;
           const remainingFraction = Math.max(0, 1 - progress / 100);
@@ -173,11 +177,16 @@ export function QueueTimelineView({
         } else {
           endTime = new Date(nowMs + HOUR_MS);
         }
+        // Progress bar under the card: the printer's own figure, else how far
+        // through its estimated run the print is.
+        const totalMs = endTime.getTime() - start.getTime();
+        const progress = status?.progress
+          ?? (totalMs > 0 ? Math.min(100, Math.max(0, ((nowMs - start.getTime()) / totalMs) * 100)) : undefined);
         result.push({
           item,
           estimatedStart: start,
           estimatedEnd: endTime,
-          progress: status?.progress ?? undefined,
+          progress,
           type: 'printing',
         });
         const lk = queueLaneKey(item);
@@ -288,6 +297,9 @@ export function QueueTimelineView({
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(ev);
     }
+    for (const laneEvents of map.values()) {
+      laneEvents.sort((a, b) => a.estimatedStart.getTime() - b.estimatedStart.getTime());
+    }
     return map;
   }, [events]);
 
@@ -326,7 +338,19 @@ export function QueueTimelineView({
   /** Start time and target lane the current drag would drop on. */
   const dropTarget = (state: DragState) => {
     const deltaMs = (state.dx / state.trackWidthPx) * RANGE_MS;
-    const startMs = Math.max(nowMs, Math.round((state.originalStartMs + deltaMs) / SNAP_MS) * SNAP_MS);
+    let startMs = Math.max(nowMs, Math.round((state.originalStartMs + deltaMs) / SNAP_MS) * SNAP_MS);
+    // A job dropped on top of another card starts when that card ends, so
+    // cards never overlap. Repeat in case that end lands inside the next one.
+    const others = (eventsByLane.get(state.laneKey) ?? []).filter((ev) => ev.item.id !== state.itemId);
+    for (let moved = true; moved; ) {
+      moved = false;
+      for (const ev of others) {
+        if (startMs >= ev.estimatedStart.getTime() && startMs < ev.estimatedEnd.getTime()) {
+          startMs = ev.estimatedEnd.getTime();
+          moved = true;
+        }
+      }
+    }
     return { startMs, lane: laneByKey.get(state.laneKey) };
   };
 
@@ -584,13 +608,23 @@ export function QueueTimelineView({
                     />
 
                     {/* Job bars */}
-                    {laneEvents.map((ev) => {
+                    {laneEvents.map((ev, index) => {
                       // Clip to the visible window.
                       const startMs = Math.max(rangeStartMs, ev.estimatedStart.getTime());
                       const endMs = Math.min(rangeEndMs, ev.estimatedEnd.getTime());
                       if (endMs <= rangeStartMs || startMs >= rangeEndMs) return null;
                       const leftPct = ((startMs - rangeStartMs) / RANGE_MS) * 100;
                       const widthPct = ((endMs - startMs) / RANGE_MS) * 100;
+                      // Cards never overlap: a short job is widened to stay
+                      // clickable, but only up to where the next card starts.
+                      const next = laneEvents[index + 1];
+                      const nextLeftPct = next
+                        ? ((Math.max(rangeStartMs, next.estimatedStart.getTime()) - rangeStartMs) / RANGE_MS) * 100
+                        : null;
+                      const roomPct = nextLeftPct != null ? Math.max(widthPct, nextLeftPct - leftPct) : null;
+                      const widthCss = roomPct != null
+                        ? `min(max(${MIN_BAR_PX}px, ${widthPct}%), ${roomPct}%)`
+                        : `max(${MIN_BAR_PX}px, ${widthPct}%)`;
                       const displayName = ev.item.archive_name
                         || ev.item.library_file_name
                         || `#${ev.item.id}`;
@@ -639,7 +673,7 @@ export function QueueTimelineView({
                           }`}
                           style={{
                             left: `${leftPct}%`,
-                            width: `max(${MIN_BAR_PX}px, ${widthPct}%)`,
+                            width: widthCss,
                             top: 8,
                             height: LANE_BAR_HEIGHT_PX,
                             transform: dragging ? `translate(${dragging.dx}px, ${dragging.dy}px)` : undefined,
@@ -671,8 +705,9 @@ export function QueueTimelineView({
                           )}
                           {isPrinting && ev.progress != null && (
                             <div
-                              className="absolute bottom-0 left-0 h-0.5 bg-amber-300"
+                              className="absolute bottom-0 left-0 h-1 bg-amber-300"
                               style={{ width: `${ev.progress}%` }}
+                              data-testid={`timeline-progress-${ev.item.id}`}
                               aria-hidden
                             />
                           )}
