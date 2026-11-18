@@ -1776,6 +1776,7 @@ export default {
       locked: 'Druckt (gesperrt)',
       nudgeEarlier: '15 Min. früher',
       nudgeLater: '15 Min. später',
+      moveMenu: 'Früher oder später verschieben',
       legend: {
         printing: 'Druckt (gesperrt)',
         queued: 'Wartend (ziehen zum Verschieben)',

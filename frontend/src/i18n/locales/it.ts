@@ -1776,6 +1776,7 @@ export default {
       locked: 'In stampa (bloccato)',
       nudgeEarlier: 'Sposta 15 min prima',
       nudgeLater: 'Sposta 15 min dopo',
+      moveMenu: 'Sposta prima o dopo',
       legend: {
         printing: 'In stampa (bloccato)',
         queued: 'In coda (trascina per spostare)',

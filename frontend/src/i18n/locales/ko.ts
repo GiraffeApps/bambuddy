@@ -1692,6 +1692,7 @@ export default {
       locked: '출력 중(잠김)',
       nudgeEarlier: '15분 앞당기기',
       nudgeLater: '15분 미루기',
+      moveMenu: '앞뒤로 이동',
       legend: {
         printing: '출력 중(잠김)',
         queued: '대기 중(끌어서 이동)',

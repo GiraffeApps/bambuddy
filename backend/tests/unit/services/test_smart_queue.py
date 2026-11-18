@@ -153,3 +153,43 @@ class TestPlanQueue:
         # FIFO would start the 16 h job at 09:00 and nothing else on Monday.
         assert len(monday_starts) == 6
         assert monday_starts[-1].job_id == 1  # the 16 h job, overnight
+
+
+class TestPlanQueueGuarantees:
+    """Sadi's two rules, checked over many random queues and fleets."""
+
+    @pytest.mark.parametrize("seed", range(40))
+    def test_starts_in_office_hours_and_shortest_first_each_day(self, seed):
+        import random
+
+        rng = random.Random(seed)
+        schedule = _schedule(tz="America/Toronto")
+        printers = [
+            PlanPrinter(id=p, model="X1C", free_at=MONDAY_8AM + timedelta(hours=rng.choice([0, 3, 11, 20])))
+            for p in (1, 2, 3)
+        ]
+        jobs = [
+            PlanJob(
+                id=i,
+                duration_seconds=int(rng.choice([0.25, 0.5, 1, 2, 3, 5, 7, 9, 12, 16, 22, 30]) * H),
+                printer_id=rng.choice([None, 1, 2, 3]),
+                target_model="X1C",
+            )
+            for i in range(1, rng.randint(5, 25))
+        ]
+        plan = plan_queue(jobs, printers, schedule, MONDAY_8AM + timedelta(minutes=rng.randint(0, 600)))
+
+        assert plan.unplaced == []
+        by_printer_day: dict[tuple, list] = {}
+        for p in plan.placements:
+            assert schedule.is_open(p.start), f"start outside office hours: {p}"
+            day = p.start.astimezone(schedule.tz).date()
+            by_printer_day.setdefault((p.printer_id, day), []).append(p)
+
+        for starts in by_printer_day.values():
+            starts.sort(key=lambda p: p.start)
+            lengths = [(p.end - p.start).total_seconds() for p in starts]
+            # Shortest first: each start of the day is no longer than the next.
+            assert lengths == sorted(lengths), lengths
+            # Only the day's last start may run past close (overnight).
+            assert not any(p.overnight for p in starts[:-1])

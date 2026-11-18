@@ -389,3 +389,107 @@ describe('QueueTimelineView nudge arrows', () => {
     expect(onReschedule).not.toHaveBeenCalled();
   });
 });
+
+describe('QueueTimelineView arrow fixes', () => {
+  it('a greyed-out arrow swallows its click instead of opening the job', () => {
+    const onItemClick = vi.fn();
+    const onReschedule = vi.fn();
+    render(
+      <QueueTimelineView
+        queueItems={[running, pending(1, 'Queued job', 1)]}
+        printers={printers}
+        printerStatuses={statuses}
+        sjfEnabled={false}
+        onItemClick={onItemClick}
+        onReschedule={onReschedule}
+        t={t}
+      />,
+    );
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    const left = screen.getByTestId('timeline-nudge-left-1');
+    expect(left).toBeDisabled();
+    // Clicks on it must not fall through to the card under it.
+    expect(left.className).not.toContain('pointer-events-none');
+    expect(left.className).toContain('z-30');
+    fireEvent.click(left);
+    expect(onItemClick).not.toHaveBeenCalled();
+    expect(onReschedule).not.toHaveBeenCalled();
+  });
+
+  it('a very small card gets one overflow button that opens the move arrows', () => {
+    const onReschedule = vi.fn();
+    const QUARTER = 15 * 60 * 1000;
+    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
+    render(
+      <QueueTimelineView
+        queueItems={[pending(1, 'Tiny', 1, { scheduled_time: new Date(inTwo).toISOString(), print_time_seconds: 300 })]}
+        printers={printers}
+        printerStatuses={{}}
+        sjfEnabled={false}
+        onItemClick={() => {}}
+        onReschedule={onReschedule}
+        t={t}
+      />,
+    );
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ width: 40 } as DOMRect);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    expect(screen.queryByTestId('timeline-nudge-left-1')).toBeNull();
+    fireEvent.click(screen.getByTestId('timeline-nudge-menu-1'));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('timeline-nudge-right-1'));
+    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo + QUARTER);
+  });
+});
+
+describe('QueueTimelineView keeps starts inside office hours', () => {
+  // Monday 2026-11-16 16:40 UTC; office Mon-Fri 09:00-17:00 UTC.
+  const NOW = Date.UTC(2026, 10, 16, 16, 40);
+  const office = { days: [0, 1, 2, 3, 4], start: '09:00', end: '17:00', timezone: 'UTC' };
+  const TUESDAY_9 = Date.UTC(2026, 10, 17, 9);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function renderAt(items: PrintQueueItem[], onReschedule = vi.fn()) {
+    render(
+      <QueueTimelineView
+        queueItems={items}
+        printers={printers}
+        printerStatuses={{}}
+        sjfEnabled={false}
+        officeSchedule={office}
+        onItemClick={() => {}}
+        onReschedule={onReschedule}
+        t={t}
+      />,
+    );
+    return onReschedule;
+  }
+
+  it('a nudge past closing time goes to the next morning', () => {
+    const at1645 = new Date(Date.UTC(2026, 10, 16, 16, 45)).toISOString();
+    const onReschedule = renderAt([pending(1, 'Late job', 1, { scheduled_time: at1645 })]);
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowRight' });
+    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(TUESDAY_9);
+  });
+
+  it('a nudge back from the morning goes to the last slot before the previous close', () => {
+    const onReschedule = renderAt([pending(1, 'Morning job', 1, { scheduled_time: new Date(TUESDAY_9).toISOString() })]);
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowLeft' });
+    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(Date.UTC(2026, 10, 16, 16, 45));
+  });
+
+  it('a job chained past closing is drawn at the next opening', () => {
+    const at1645 = new Date(Date.UTC(2026, 10, 16, 16, 45)).toISOString();
+    const at1650 = new Date(Date.UTC(2026, 10, 16, 16, 50)).toISOString();
+    renderAt([
+      pending(1, 'Late job', 1, { scheduled_time: at1645 }),
+      pending(2, 'Next job', 2, { scheduled_time: at1650 }),
+    ]);
+    // The window starts at 16:00, so Tuesday 09:00 is 17 of its 24 hours in.
+    expect(parseFloat(screen.getByTestId('timeline-bar-2').style.left)).toBeCloseTo((17 / 24) * 100, 3);
+  });
+});

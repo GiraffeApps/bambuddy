@@ -119,3 +119,20 @@ export function officeWindowsBetween(schedule: OfficeSchedule, fromMs: number, t
   }
   return windows.sort((a, b) => a.startMs - b.startMs);
 }
+
+/** `t` if the office is open then, else the next opening. Starts are allowed
+ *  from opening up to (not including) closing, as the planner allows them. */
+export function nextOfficeMoment(schedule: OfficeSchedule, t: number): number {
+  const window = officeWindowsBetween(schedule, t, t + 8 * DAY_MS).find((w) => w.endMs > t);
+  return window ? Math.max(window.startMs, t) : t;
+}
+
+/** `t` if the office is open then, else the last `stepMs` slot before the
+ *  most recent closing (for moving a start earlier). */
+export function previousOfficeMoment(schedule: OfficeSchedule, t: number, stepMs: number): number {
+  const windows = officeWindowsBetween(schedule, t - 8 * DAY_MS, t + 1).filter((w) => w.startMs <= t);
+  const last = windows[windows.length - 1];
+  if (!last) return t;
+  if (t < last.endMs) return t;
+  return Math.max(last.startMs, Math.floor((last.endMs - 1) / stepMs) * stepMs);
+}

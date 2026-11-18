@@ -1776,6 +1776,7 @@ export default {
       locked: 'Imprimindo (bloqueado)',
       nudgeEarlier: 'Mover 15 min antes',
       nudgeLater: 'Mover 15 min depois',
+      moveMenu: 'Mover para antes ou depois',
       legend: {
         printing: 'Imprimindo (bloqueado)',
         queued: 'Na fila (arraste para mover)',

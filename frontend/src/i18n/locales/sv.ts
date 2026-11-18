@@ -1793,6 +1793,7 @@ export default {
       locked: 'Skriver ut (låst)',
       nudgeEarlier: 'Flytta 15 min tidigare',
       nudgeLater: 'Flytta 15 min senare',
+      moveMenu: 'Flytta tidigare eller senare',
       legend: {
         printing: 'Skriver ut (låst)',
         queued: 'I kö (dra för att flytta)',

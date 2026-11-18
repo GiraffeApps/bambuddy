@@ -1793,6 +1793,7 @@ export default {
       locked: 'Bezig met printen (vergrendeld)',
       nudgeEarlier: '15 min eerder',
       nudgeLater: '15 min later',
+      moveMenu: 'Eerder of later zetten',
       legend: {
         printing: 'Bezig met printen (vergrendeld)',
         queued: 'In wachtrij (sleep om te verplaatsen)',

@@ -1795,6 +1795,7 @@ export default {
       locked: 'Printing (locked)',
       nudgeEarlier: 'Move 15 min earlier',
       nudgeLater: 'Move 15 min later',
+      moveMenu: 'Move earlier or later',
       legend: {
         printing: 'Printing (locked)',
         queued: 'Queued (drag to move)',

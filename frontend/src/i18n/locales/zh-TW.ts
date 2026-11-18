@@ -1776,6 +1776,7 @@ export default {
       locked: '列印中（已鎖定）',
       nudgeEarlier: '提前 15 分鐘',
       nudgeLater: '延後 15 分鐘',
+      moveMenu: '提前或延後',
       legend: {
         printing: '列印中（已鎖定）',
         queued: '排隊中（拖曳以移動）',

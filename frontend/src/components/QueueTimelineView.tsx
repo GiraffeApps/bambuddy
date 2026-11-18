@@ -1,12 +1,12 @@
 import { Fragment, useState, useMemo, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { Briefcase, ChevronLeft, ChevronRight, Clock, Layers, Loader2, Lock, Printer as PrinterIcon, Sparkles } from 'lucide-react';
+import { Briefcase, ChevronLeft, ChevronRight, Clock, Layers, Loader2, Lock, MoreHorizontal, Printer as PrinterIcon, Sparkles } from 'lucide-react';
 import { formatDuration, parseUTCDate } from '../utils/date';
 import { compareQueueOrder, queueLaneKey } from '../utils/queueOrder';
 import { isBusyOnlyWaitingReason } from '../utils/waitingReason';
 import type { PrintQueueItem, Printer } from '../api/client';
 import { queueItemThumbnailUrl } from '../utils/queueItemThumbnail';
 import { Button } from './Button';
-import { officeWindowsBetween, type OfficeSchedule } from '../utils/officeSchedule';
+import { nextOfficeMoment, officeWindowsBetween, previousOfficeMoment, type OfficeSchedule } from '../utils/officeSchedule';
 
 /** Gantt-style 24h-rolling timeline. One horizontal swimlane per printer
  *  (plus one per active target_model and one for unassigned items). Each
@@ -26,6 +26,9 @@ const LANE_BAR_HEIGHT_PX = 40;
 const SNAP_MS = 15 * 60 * 1000;
 // Pointer travel below this is a click, not a drag.
 const DRAG_THRESHOLD_PX = 4;
+// Cards narrower than this get one overflow button instead of two arrows,
+// which would cover the whole card.
+const COMPACT_CARD_PX = 96;
 
 /** Where a dragged job was dropped: a printer (null = keep its own) and a start. */
 export interface TimelineReschedule {
@@ -228,6 +231,9 @@ export function QueueTimelineView({
         const scheduled = parseUTCDate(item.scheduled_time);
         if (scheduled && scheduled.getTime() <= sixMonthsFromNow) {
           chainEnd = Math.max(chainEnd, scheduled.getTime());
+          // The queue holds a placed job while the office is closed, so it
+          // starts at the next opening even if the printer frees up earlier.
+          if (officeSchedule) chainEnd = nextOfficeMoment(officeSchedule, chainEnd);
         }
         const duration = (item.print_time_seconds || 3600) * 1000;
         result.push({
@@ -242,7 +248,7 @@ export function QueueTimelineView({
       }
     }
     return result;
-  }, [items, printerStatuses, nowMs, sjfEnabled]);
+  }, [items, printerStatuses, nowMs, sjfEnabled, officeSchedule]);
 
   // Lanes: every printer + every distinct target_model with queue activity
   // + an "unassigned" lane if needed. Printers that have NO events queued
@@ -341,6 +347,14 @@ export function QueueTimelineView({
     const others = (eventsByLane.get(laneKey) ?? []).filter((ev) => ev.item.id !== itemId);
     for (let moved = true; moved; ) {
       moved = false;
+      // Never a start while the office is closed: on to the next opening.
+      if (officeSchedule) {
+        const open = nextOfficeMoment(officeSchedule, startMs);
+        if (open !== startMs) {
+          startMs = open;
+          moved = true;
+        }
+      }
       for (const ev of others) {
         if (startMs >= ev.estimatedStart.getTime() && startMs < ev.estimatedEnd.getTime()) {
           startMs = ev.estimatedEnd.getTime();
@@ -362,9 +376,11 @@ export function QueueTimelineView({
    *  when it can't move that way (into the past, or into the card before). */
   const nudgeTarget = (ev: ScheduleEvent, direction: -1 | 1): number | null => {
     const current = ev.estimatedStart.getTime();
-    const step = direction > 0
+    let step = direction > 0
       ? Math.floor(current / SNAP_MS) * SNAP_MS + SNAP_MS
       : Math.ceil(current / SNAP_MS) * SNAP_MS - SNAP_MS;
+    // Moving earlier out of the morning lands at the previous day's last slot.
+    if (direction < 0 && officeSchedule) step = previousOfficeMoment(officeSchedule, step, SNAP_MS);
     const target = clearOfOtherCards(Math.max(nowMs, step), queueLaneKey(ev.item), ev.item.id);
     return direction > 0 ? (target > current ? target : null) : (target < current ? target : null);
   };
@@ -394,17 +410,25 @@ export function QueueTimelineView({
 
   // The card whose nudge arrows are showing (hovered or focused).
   const [activeCardId, setActiveCardId] = useState<number | null>(null);
+  // Whether the active card is too narrow for arrows, and whether its
+  // overflow menu is open.
+  const [activeCompact, setActiveCompact] = useState(false);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   // Leaving a card for one of its arrows (drawn on top of it) fires a
   // mouseleave first, so hiding waits a moment for the arrow to claim it.
   const hideArrowsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showArrowsFor = (id: number) => {
+  const showArrowsFor = (id: number, cardWidthPx?: number) => {
     if (hideArrowsTimer.current) clearTimeout(hideArrowsTimer.current);
     hideArrowsTimer.current = null;
+    if (cardWidthPx != null) setActiveCompact(cardWidthPx > 0 && cardWidthPx < COMPACT_CARD_PX);
     setActiveCardId(id);
   };
   const hideArrowsSoon = (id: number) => {
     if (hideArrowsTimer.current) clearTimeout(hideArrowsTimer.current);
-    hideArrowsTimer.current = setTimeout(() => setActiveCardId((cur) => (cur === id ? null : cur)), 150);
+    hideArrowsTimer.current = setTimeout(() => {
+      setActiveCardId((cur) => (cur === id ? null : cur));
+      setMenuOpenId((cur) => (cur === id ? null : cur));
+    }, 150);
   };
   useEffect(() => () => {
     if (hideArrowsTimer.current) clearTimeout(hideArrowsTimer.current);
@@ -694,14 +718,62 @@ export function QueueTimelineView({
                       const showArrows = draggable && !dragging && activeCardId === ev.item.id;
                       const earlier = showArrows ? nudgeTarget(ev, -1) : null;
                       const later = showArrows ? nudgeTarget(ev, 1) : null;
+                      // Solid and above the card (photo included). A greyed-out
+                      // arrow still catches its click: letting it fall through
+                      // opened the job instead (it used pointer-events: none).
                       const arrowClass =
-                        'absolute z-20 w-5 h-6 rounded bg-bambu-dark/90 border border-bambu-dark-tertiary text-white flex items-center justify-center hover:bg-bambu-green hover:text-black disabled:opacity-30 disabled:pointer-events-none';
+                        'absolute z-30 w-6 h-7 rounded-md bg-bambu-dark border border-bambu-gray/60 shadow-md text-white flex items-center justify-center hover:bg-bambu-green hover:text-black disabled:text-bambu-gray/50 disabled:bg-bambu-dark disabled:cursor-not-allowed';
+                      const keepOpen = {
+                        onMouseEnter: () => showArrowsFor(ev.item.id),
+                        onMouseLeave: () => hideArrowsSoon(ev.item.id),
+                        onFocus: () => showArrowsFor(ev.item.id),
+                        onBlur: () => hideArrowsSoon(ev.item.id),
+                        onPointerDown: (e: ReactPointerEvent) => e.stopPropagation(),
+                      };
+                      const arrowTop = 8 + (LANE_BAR_HEIGHT_PX - 28) / 2;
+                      const compact = showArrows && activeCompact;
+                      const earlierButton = (style: React.CSSProperties) => (
+                        <button
+                          type="button"
+                          className={arrowClass}
+                          style={style}
+                          {...keepOpen}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nudge(ev, -1);
+                          }}
+                          disabled={earlier == null}
+                          title={t('queue.smartQueue.nudgeEarlier')}
+                          aria-label={t('queue.smartQueue.nudgeEarlier')}
+                          data-testid={`timeline-nudge-left-${ev.item.id}`}
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                      );
+                      const laterButton = (style: React.CSSProperties) => (
+                        <button
+                          type="button"
+                          className={arrowClass}
+                          style={style}
+                          {...keepOpen}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nudge(ev, 1);
+                          }}
+                          disabled={later == null}
+                          title={t('queue.smartQueue.nudgeLater')}
+                          aria-label={t('queue.smartQueue.nudgeLater')}
+                          data-testid={`timeline-nudge-right-${ev.item.id}`}
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      );
                       return (
                         <Fragment key={ev.item.id}>
                         <button
-                          onMouseEnter={draggable ? () => showArrowsFor(ev.item.id) : undefined}
+                          onMouseEnter={draggable ? (e) => showArrowsFor(ev.item.id, e.currentTarget.getBoundingClientRect().width) : undefined}
                           onMouseLeave={draggable ? () => hideArrowsSoon(ev.item.id) : undefined}
-                          onFocus={draggable ? () => showArrowsFor(ev.item.id) : undefined}
+                          onFocus={draggable ? (e) => showArrowsFor(ev.item.id, e.currentTarget.getBoundingClientRect().width) : undefined}
                           onBlur={draggable ? () => hideArrowsSoon(ev.item.id) : undefined}
                           onKeyDown={draggable ? (e) => handleBarKeyDown(e, ev) : undefined}
                           onClick={() => {
@@ -770,40 +842,43 @@ export function QueueTimelineView({
                             />
                           )}
                         </button>
-                        {showArrows && (
+                        {showArrows && !compact && (
+                          <>
+                            {earlierButton({ left: `calc(${leftPct}% + 2px)`, top: arrowTop })}
+                            {laterButton({ left: `calc(${leftPct}% + ${widthCss} - 26px)`, top: arrowTop })}
+                          </>
+                        )}
+                        {compact && (
                           <>
                             <button
                               type="button"
                               className={arrowClass}
-                              style={{ left: `calc(${leftPct}% + 2px)`, top: 8 + (LANE_BAR_HEIGHT_PX - 24) / 2 }}
-                              onMouseEnter={() => showArrowsFor(ev.item.id)}
-                              onMouseLeave={() => hideArrowsSoon(ev.item.id)}
-                              onFocus={() => showArrowsFor(ev.item.id)}
-                              onBlur={() => hideArrowsSoon(ev.item.id)}
-                              onClick={() => nudge(ev, -1)}
-                              disabled={earlier == null}
-                              title={t('queue.smartQueue.nudgeEarlier')}
-                              aria-label={t('queue.smartQueue.nudgeEarlier')}
-                              data-testid={`timeline-nudge-left-${ev.item.id}`}
+                              style={{ left: `calc(${leftPct}% + ${widthCss} - 26px)`, top: arrowTop }}
+                              {...keepOpen}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuOpenId((cur) => (cur === ev.item.id ? null : ev.item.id));
+                              }}
+                              aria-haspopup="menu"
+                              aria-expanded={menuOpenId === ev.item.id}
+                              title={t('queue.smartQueue.moveMenu')}
+                              aria-label={t('queue.smartQueue.moveMenu')}
+                              data-testid={`timeline-nudge-menu-${ev.item.id}`}
                             >
-                              <ChevronLeft className="w-3.5 h-3.5" />
+                              <MoreHorizontal className="w-4 h-4" />
                             </button>
-                            <button
-                              type="button"
-                              className={arrowClass}
-                              style={{ left: `calc(${leftPct}% + ${widthCss} - 22px)`, top: 8 + (LANE_BAR_HEIGHT_PX - 24) / 2 }}
-                              onMouseEnter={() => showArrowsFor(ev.item.id)}
-                              onMouseLeave={() => hideArrowsSoon(ev.item.id)}
-                              onFocus={() => showArrowsFor(ev.item.id)}
-                              onBlur={() => hideArrowsSoon(ev.item.id)}
-                              onClick={() => nudge(ev, 1)}
-                              disabled={later == null}
-                              title={t('queue.smartQueue.nudgeLater')}
-                              aria-label={t('queue.smartQueue.nudgeLater')}
-                              data-testid={`timeline-nudge-right-${ev.item.id}`}
-                            >
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
+                            {menuOpenId === ev.item.id && (
+                              <div
+                                role="menu"
+                                className="absolute z-40 flex items-center gap-1 p-1 rounded-lg bg-bambu-dark border border-bambu-gray/60 shadow-lg"
+                                style={{ left: `calc(${leftPct}% + ${widthCss} - 26px)`, top: arrowTop - 34 }}
+                                onMouseEnter={keepOpen.onMouseEnter}
+                                onMouseLeave={keepOpen.onMouseLeave}
+                              >
+                                {earlierButton({ position: 'relative' })}
+                                {laterButton({ position: 'relative' })}
+                              </div>
+                            )}
                           </>
                         )}
                         </Fragment>

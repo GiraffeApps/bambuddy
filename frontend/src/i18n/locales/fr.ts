@@ -1776,6 +1776,7 @@ export default {
       locked: 'En impression (verrouillé)',
       nudgeEarlier: 'Avancer de 15 min',
       nudgeLater: 'Reculer de 15 min',
+      moveMenu: 'Avancer ou reculer',
       legend: {
         printing: 'En impression (verrouillé)',
         queued: 'En attente (glisser pour déplacer)',

@@ -1776,6 +1776,7 @@ export default {
       locked: 'Yazdırılıyor (kilitli)',
       nudgeEarlier: '15 dk öne al',
       nudgeLater: '15 dk ertele',
+      moveMenu: 'Öne veya geriye taşı',
       legend: {
         printing: 'Yazdırılıyor (kilitli)',
         queued: 'Kuyrukta (taşımak için sürükleyin)',

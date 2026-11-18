@@ -1775,6 +1775,7 @@ export default {
       locked: '印刷中（ロック）',
       nudgeEarlier: '15分早める',
       nudgeLater: '15分遅らせる',
+      moveMenu: '前後に移動',
       legend: {
         printing: '印刷中（ロック）',
         queued: '待機中（ドラッグで移動）',

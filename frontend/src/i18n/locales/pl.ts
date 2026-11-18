@@ -1795,6 +1795,7 @@ export default {
       locked: 'Drukowanie (zablokowane)',
       nudgeEarlier: 'Przesuń o 15 min wcześniej',
       nudgeLater: 'Przesuń o 15 min później',
+      moveMenu: 'Przesuń wcześniej lub później',
       legend: {
         printing: 'Drukowanie (zablokowane)',
         queued: 'W kolejce (przeciągnij, aby przenieść)',
