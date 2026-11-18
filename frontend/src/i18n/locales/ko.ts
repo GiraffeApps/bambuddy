@@ -1685,6 +1685,42 @@ export default {
       },
       printerColumnHeader: '프린터',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: '스마트 대기열',
+      tooltip: '대기 중인 모든 작업을 타임라인에 배치합니다. 근무 시간 중 시작 횟수를 최대화하고, 긴 출력은 밤새 진행되도록 마지막에 둡니다',
+      locked: '출력 중(잠김)',
+      swapEarlier: '이전 작업과 바꾸기',
+      swapLater: '다음 작업과 바꾸기',
+      moveMenu: '순서 변경',
+      legend: {
+        printing: '출력 중(잠김)',
+        queued: '대기 중(끌어서 이동)',
+        officeHours: '근무 시간',
+      },
+      schedule: {
+        button: '근무 시간',
+        title: '근무 시간',
+        description: '스마트 대기열은 출력을 시작하고 플레이트를 비울 사람이 있을 때만 출력을 시작합니다. 긴 출력은 하루의 마지막에 두어 밤새 진행됩니다.',
+        days: '근무일',
+        start: '시작',
+        end: '종료',
+        timezone: '시간은 {{timezone}} 기준입니다.',
+        error: {
+          noDays: '근무일을 하나 이상 선택하세요.',
+          badTime: '두 시간을 모두 HH:MM 형식으로 입력하세요.',
+          endBeforeStart: '종료 시간은 시작 시간보다 늦어야 합니다.',
+        },
+      },
+      toast: {
+        placed: '작업 {{count}}개를 타임라인에 배치했습니다',
+        unplaced: '작업 {{count}}개를 배치하지 못했습니다: 맞는 프린터가 없습니다',
+        nothingToPlace: '배치할 대기 작업이 없습니다',
+        failed: '스마트 대기열 실패',
+        scheduleSaved: '근무 시간을 저장했습니다',
+        moveFailed: '작업을 이동하지 못했습니다',
+      },
+    },
     permissions: {
       noStopPrint: '인쇄를 정지할 권한이 없습니다',
       noStartPrint: '인쇄를 시작할 권한이 없습니다',

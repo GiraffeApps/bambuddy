@@ -1788,6 +1788,42 @@ export default {
       },
       printerColumnHeader: 'Printer',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Smart queue',
+      tooltip: 'Place every queued job on the timeline: as many starts as possible during office hours, longest prints last so they run overnight',
+      locked: 'Printing (locked)',
+      swapEarlier: 'Swap with the job before',
+      swapLater: 'Swap with the job after',
+      moveMenu: 'Reorder',
+      legend: {
+        printing: 'Printing (locked)',
+        queued: 'Queued (drag to move)',
+        officeHours: 'Office hours',
+      },
+      schedule: {
+        button: 'Office hours',
+        title: 'Office hours',
+        description: 'The smart queue only starts prints while someone is in to start them and clear plates. Longer prints are left to the end of the day so they run overnight.',
+        days: 'Working days',
+        start: 'Opens',
+        end: 'Closes',
+        timezone: 'Times are in {{timezone}}.',
+        error: {
+          noDays: 'Pick at least one working day.',
+          badTime: 'Enter both times as HH:MM.',
+          endBeforeStart: 'Closing time must be after opening time.',
+        },
+      },
+      toast: {
+        placed: 'Placed {{count}} job(s) on the timeline',
+        unplaced: '{{count}} job(s) could not be placed: no matching printer',
+        nothingToPlace: 'No queued jobs to place',
+        failed: 'Smart queue failed',
+        scheduleSaved: 'Office hours saved',
+        moveFailed: 'Could not move the job',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'You do not have permission to stop prints',

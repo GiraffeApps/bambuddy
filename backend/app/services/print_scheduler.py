@@ -1693,6 +1693,11 @@ class PrintScheduler:
         async with async_session() as db:
             # Check if shortest-job-first scheduling is enabled
             sjf_enabled = await self._get_bool_setting(db, "queue_shortest_first")
+            # Smart queue: jobs placed on the timeline only start inside office
+            # hours, so a print that overruns its slot can't push the next one
+            # into the evening.
+            office_schedule = await self._get_office_schedule(db)
+            office_closed = office_schedule is not None and not office_schedule.is_open(datetime.now(timezone.utc))
 
             # Get all pending items in the one order the queue page shows them
             # in (#3200). The first eligible item takes a printer, so this order
@@ -2112,6 +2117,12 @@ class PrintScheduler:
                         # Waiting on the clock, not on a printer.
                         await hold_item(item, None)
                         skip_reasons["scheduled_future"] = skip_reasons.get("scheduled_future", 0) + 1
+                        continue
+                    if office_closed:
+                        # Placed on the timeline, but nobody is in to start it:
+                        # it waits for the office to open (also the clock).
+                        await hold_item(item, None)
+                        skip_reasons["outside_office_hours"] = skip_reasons.get("outside_office_hours", 0) + 1
                         continue
 
                 # Skip items that require manual start, except an "any model"
@@ -5374,6 +5385,16 @@ class PrintScheduler:
         if require_plate_clear and printer_manager.is_awaiting_plate_clear(printer_id):
             return f"Waiting for plate confirmation: {printer_name}"
         return f"Busy: {printer_name}"
+
+    async def _get_office_schedule(self, db: AsyncSession):
+        """The smart queue's office schedule, or None when unset or unreadable."""
+        from backend.app.services.smart_queue import OfficeSchedule
+
+        try:
+            return OfficeSchedule.parse(await self._get_setting(db, "office_schedule"))
+        except (ValueError, TypeError) as exc:
+            logger.warning("office_schedule unreadable, not enforcing office hours: %s", exc)
+            return None
 
     async def _get_setting(self, db: AsyncSession, key: str) -> str | None:
         """Read a setting value from the database."""

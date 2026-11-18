@@ -1769,6 +1769,42 @@ export default {
       },
       printerColumnHeader: '打印机',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: '智能排队',
+      tooltip: '将所有排队任务排入时间线：在办公时间内尽可能多地开始打印，最长的打印放在最后，让它们通宵运行',
+      locked: '打印中（已锁定）',
+      swapEarlier: '与前一个任务交换',
+      swapLater: '与后一个任务交换',
+      moveMenu: '调整顺序',
+      legend: {
+        printing: '打印中（已锁定）',
+        queued: '排队中（拖动以移动）',
+        officeHours: '办公时间',
+      },
+      schedule: {
+        button: '办公时间',
+        title: '办公时间',
+        description: '智能排队只在有人在场开始打印和清理打印板时启动打印。较长的打印会留到一天结束时，以便通宵运行。',
+        days: '工作日',
+        start: '开始',
+        end: '结束',
+        timezone: '时间为 {{timezone}}。',
+        error: {
+          noDays: '请至少选择一个工作日。',
+          badTime: '请以 HH:MM 格式输入两个时间。',
+          endBeforeStart: '结束时间必须晚于开始时间。',
+        },
+      },
+      toast: {
+        placed: '已将 {{count}} 个任务排入时间线',
+        unplaced: '{{count}} 个任务无法排入：没有匹配的打印机',
+        nothingToPlace: '没有可排入的排队任务',
+        failed: '智能排队失败',
+        scheduleSaved: '办公时间已保存',
+        moveFailed: '无法移动该任务',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: '您没有停止打印的权限',

@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -58,6 +58,9 @@ from backend.app.schemas.print_queue import (
     PrintQueueReorder,
     QueueVariantCreate,
     QueueVariantSummary,
+    SmartSchedulePlacement,
+    SmartScheduleRequest,
+    SmartScheduleResponse,
 )
 from backend.app.services.filament_deficit import compute_deficit_for_queue_item
 from backend.app.services.filament_requirements import overrides_for_plate
@@ -2758,6 +2761,138 @@ async def reorder_queue(
     await db.commit()
     logger.info("Reordered %s queue items", len(data.items))
     return {"message": f"Reordered {len(data.items)} items"}
+
+
+# Printer states in which the printer is busy with a print right now.
+_BUSY_PRINTER_STATES = frozenset({"RUNNING", "PAUSE", "PREPARE", "SLICING"})
+
+
+@router.post("/smart-schedule", response_model=SmartScheduleResponse)
+async def smart_schedule_queue(
+    data: SmartScheduleRequest,
+    db: AsyncSession = Depends(get_db, scope="function"),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.QUEUE_UPDATE_ALL),
+    printer_scope: PrinterScope = RequestPrinterScope,
+):
+    """Place every pending job on a printer and a start time around the office schedule.
+
+    Jobs start only inside office hours; each printer's day is filled with the
+    shortest jobs that finish before close, and the longest job left goes last
+    so it runs overnight (see ``services/smart_queue``). The result is written
+    as each job's ``printer_id`` + ``scheduled_time``, and queue positions are
+    renumbered into start order so the list and the timeline agree.
+
+    Staged (manual start) jobs, jobs being dispatched and jobs with printer
+    alternatives are left alone. Model-based jobs are pinned to the printer of
+    that model the plan picked.
+    """
+    from backend.app.api.routes.settings import get_setting
+    from backend.app.services.printer_manager import printer_manager
+    from backend.app.services.smart_queue import OfficeSchedule, PlanJob, PlanPrinter, plan_queue
+
+    try:
+        schedule = OfficeSchedule.parse(await get_setting(db, "office_schedule"))
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(400, f"Office schedule is invalid: {exc}") from None
+    if schedule is None:
+        raise HTTPException(400, "Set an office schedule before using the smart queue")
+
+    now = datetime.now(timezone.utc)
+
+    printers = [
+        p
+        for p in (await db.execute(select(Printer).where(Printer.is_active == True).order_by(Printer.id))).scalars()  # noqa: E712
+        if printer_scope.allows(p.id)
+    ]
+
+    queue_rows = (
+        (
+            await db.execute(
+                select(PrintQueueItem)
+                .where(PrintQueueItem.status.in_(("pending", "printing")))
+                .options(selectinload(PrintQueueItem.variants))
+                .order_by(PrintQueueItem.position, PrintQueueItem.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # When each printer can take its next job: live remaining time if it is
+    # printing, else the queue's own estimate for the job it is running.
+    printing_by_printer = {row.printer_id: row for row in queue_rows if row.status == "printing" and row.printer_id}
+    plan_printers: list[PlanPrinter] = []
+    for printer in printers:
+        free_at = now
+        status = printer_manager.get_status(printer.id)
+        state = (getattr(status, "state", None) or "").upper()
+        remaining_min = getattr(status, "remaining_time", 0) or 0
+        running = printing_by_printer.get(printer.id)
+        if state in _BUSY_PRINTER_STATES and remaining_min > 0:
+            free_at = now + timedelta(minutes=remaining_min)
+        elif running is not None and running.started_at and running.print_time_seconds:
+            started = running.started_at.replace(tzinfo=timezone.utc)
+            free_at = max(now, started + timedelta(seconds=running.print_time_seconds))
+        elif state in _BUSY_PRINTER_STATES or running is not None:
+            free_at = now + timedelta(hours=1)
+        plan_printers.append(
+            PlanPrinter(id=printer.id, model=printer.model, location=printer.location, free_at=free_at)
+        )
+
+    candidates = [
+        row
+        for row in queue_rows
+        if row.status == "pending"
+        and not row.manual_start
+        and row.dispatching_at is None
+        and not row.variants
+        and printer_scope.allows(row.printer_id)
+    ]
+    jobs = [
+        PlanJob(
+            id=row.id,
+            duration_seconds=row.print_time_seconds,
+            printer_id=row.printer_id,
+            target_model=row.target_model,
+            target_location=row.target_location,
+        )
+        for row in candidates
+    ]
+    plan = plan_queue(jobs, plan_printers, schedule, now)
+
+    placements = [
+        SmartSchedulePlacement(
+            item_id=p.job_id,
+            printer_id=p.printer_id,
+            scheduled_time=p.start,
+            estimated_end=p.end,
+            overnight=p.overnight,
+        )
+        for p in plan.placements
+    ]
+
+    if not data.dry_run and plan.placements:
+        by_id = {row.id: row for row in candidates}
+        planned_rows = [by_id[p.job_id] for p in plan.placements]
+        # Reuse the positions these jobs already hold, handed out in start
+        # order, so jobs the plan didn't touch keep their place.
+        positions = sorted(row.position or 0 for row in planned_rows)
+        for placement, position in zip(plan.placements, positions, strict=True):
+            row = by_id[placement.job_id]
+            row.scheduled_time = placement.start.replace(tzinfo=None)
+            row.position = position
+            if row.printer_id != placement.printer_id:
+                row.printer_id = placement.printer_id
+                row.target_model = None
+                row.target_location = None
+        await db.commit()
+        logger.info("Smart queue placed %d jobs (%d unplaced)", len(placements), len(plan.unplaced))
+
+    return SmartScheduleResponse(
+        placements=placements,
+        unplaced_item_ids=plan.unplaced,
+        applied=not data.dry_run and bool(plan.placements),
+    )
 
 
 @router.post("/printer/{printer_id}/resume")

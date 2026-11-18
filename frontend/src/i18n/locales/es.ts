@@ -1769,6 +1769,42 @@ export default {
       },
       printerColumnHeader: 'Impresora',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Cola inteligente',
+      tooltip: 'Coloca todos los trabajos en cola en la línea de tiempo: el máximo de inicios en horario de oficina y las impresiones más largas al final para que se impriman de noche',
+      locked: 'Imprimiendo (bloqueado)',
+      swapEarlier: 'Intercambiar con el trabajo anterior',
+      swapLater: 'Intercambiar con el trabajo siguiente',
+      moveMenu: 'Reordenar',
+      legend: {
+        printing: 'Imprimiendo (bloqueado)',
+        queued: 'En cola (arrastra para mover)',
+        officeHours: 'Horario de oficina',
+      },
+      schedule: {
+        button: 'Horario de oficina',
+        title: 'Horario de oficina',
+        description: 'La cola inteligente solo inicia impresiones cuando hay alguien para iniciarlas y retirar las placas. Las impresiones más largas se dejan para el final del día y se imprimen de noche.',
+        days: 'Días laborables',
+        start: 'Apertura',
+        end: 'Cierre',
+        timezone: 'Las horas están en {{timezone}}.',
+        error: {
+          noDays: 'Elige al menos un día laborable.',
+          badTime: 'Introduce ambas horas como HH:MM.',
+          endBeforeStart: 'La hora de cierre debe ser posterior a la de apertura.',
+        },
+      },
+      toast: {
+        placed: '{{count}} trabajo(s) colocado(s) en la línea de tiempo',
+        unplaced: 'No se pudieron colocar {{count}} trabajo(s): no hay impresora compatible',
+        nothingToPlace: 'No hay trabajos en cola para colocar',
+        failed: 'La cola inteligente falló',
+        scheduleSaved: 'Horario de oficina guardado',
+        moveFailed: 'No se pudo mover el trabajo',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'No tiene permiso para detener impresiones',

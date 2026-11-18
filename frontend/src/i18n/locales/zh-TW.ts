@@ -1769,6 +1769,42 @@ export default {
       },
       printerColumnHeader: '印表機',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: '智慧排程',
+      tooltip: '將所有排隊工作排入時間軸：在辦公時間內盡量多開始列印，最長的列印放在最後，讓它們整夜執行',
+      locked: '列印中（已鎖定）',
+      swapEarlier: '與前一個工作交換',
+      swapLater: '與後一個工作交換',
+      moveMenu: '調整順序',
+      legend: {
+        printing: '列印中（已鎖定）',
+        queued: '排隊中（拖曳以移動）',
+        officeHours: '辦公時間',
+      },
+      schedule: {
+        button: '辦公時間',
+        title: '辦公時間',
+        description: '智慧排程只會在有人在場開始列印並清理列印板時啟動列印。較長的列印會留到一天結束時，以便整夜執行。',
+        days: '工作日',
+        start: '開始',
+        end: '結束',
+        timezone: '時間為 {{timezone}}。',
+        error: {
+          noDays: '請至少選擇一個工作日。',
+          badTime: '請以 HH:MM 格式輸入兩個時間。',
+          endBeforeStart: '結束時間必須晚於開始時間。',
+        },
+      },
+      toast: {
+        placed: '已將 {{count}} 個工作排入時間軸',
+        unplaced: '{{count}} 個工作無法排入：沒有相符的印表機',
+        nothingToPlace: '沒有可排入的排隊工作',
+        failed: '智慧排程失敗',
+        scheduleSaved: '辦公時間已儲存',
+        moveFailed: '無法移動該工作',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: '您沒有停止列印的權限',

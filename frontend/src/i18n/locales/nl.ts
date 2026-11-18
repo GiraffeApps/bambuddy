@@ -1786,6 +1786,42 @@ export default {
       },
       printerColumnHeader: 'Printer',
     },
+    // Smart queue (timeline): office-hours planner + drag to reschedule
+    smartQueue: {
+      button: 'Slimme wachtrij',
+      tooltip: 'Plaats alle wachtende taken op de tijdlijn: zoveel mogelijk starts tijdens kantooruren, de langste prints als laatste zodat ze \'s nachts doorlopen',
+      locked: 'Bezig met printen (vergrendeld)',
+      swapEarlier: 'Wisselen met de vorige taak',
+      swapLater: 'Wisselen met de volgende taak',
+      moveMenu: 'Volgorde wijzigen',
+      legend: {
+        printing: 'Bezig met printen (vergrendeld)',
+        queued: 'In wachtrij (sleep om te verplaatsen)',
+        officeHours: 'Kantooruren',
+      },
+      schedule: {
+        button: 'Kantooruren',
+        title: 'Kantooruren',
+        description: 'De slimme wachtrij start alleen prints wanneer er iemand is om ze te starten en platen leeg te maken. Langere prints komen aan het eind van de dag zodat ze \'s nachts doorlopen.',
+        days: 'Werkdagen',
+        start: 'Open',
+        end: 'Sluit',
+        timezone: 'Tijden zijn in {{timezone}}.',
+        error: {
+          noDays: 'Kies ten minste één werkdag.',
+          badTime: 'Voer beide tijden in als HH:MM.',
+          endBeforeStart: 'De sluitingstijd moet na de openingstijd liggen.',
+        },
+      },
+      toast: {
+        placed: '{{count}} taak/taken op de tijdlijn geplaatst',
+        unplaced: '{{count}} taak/taken konden niet worden geplaatst: geen passende printer',
+        nothingToPlace: 'Geen wachtende taken om te plaatsen',
+        failed: 'Slimme wachtrij mislukt',
+        scheduleSaved: 'Kantooruren opgeslagen',
+        moveFailed: 'Taak kon niet worden verplaatst',
+      },
+    },
     // Permissions
     permissions: {
       noStopPrint: 'Je hebt geen toestemming om afdrukken te stoppen',
