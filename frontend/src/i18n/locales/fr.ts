@@ -1774,6 +1774,8 @@ export default {
       button: 'File intelligente',
       tooltip: 'Placer toutes les tâches en attente sur la chronologie : un maximum de démarrages pendant les heures de bureau, les impressions les plus longues en dernier pour qu\'elles tournent la nuit',
       locked: 'En impression (verrouillé)',
+      nudgeEarlier: 'Avancer de 15 min',
+      nudgeLater: 'Reculer de 15 min',
       legend: {
         printing: 'En impression (verrouillé)',
         queued: 'En attente (glisser pour déplacer)',

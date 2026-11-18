@@ -1774,6 +1774,8 @@ export default {
       button: '智慧排程',
       tooltip: '將所有排隊工作排入時間軸：在辦公時間內盡量多開始列印，最長的列印放在最後，讓它們整夜執行',
       locked: '列印中（已鎖定）',
+      nudgeEarlier: '提前 15 分鐘',
+      nudgeLater: '延後 15 分鐘',
       legend: {
         printing: '列印中（已鎖定）',
         queued: '排隊中（拖曳以移動）',

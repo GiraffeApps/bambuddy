@@ -1793,6 +1793,8 @@ export default {
       button: 'Inteligentna kolejka',
       tooltip: 'Umieść wszystkie zadania z kolejki na osi czasu: jak najwięcej startów w godzinach pracy, najdłuższe wydruki na koniec, aby drukowały się w nocy',
       locked: 'Drukowanie (zablokowane)',
+      nudgeEarlier: 'Przesuń o 15 min wcześniej',
+      nudgeLater: 'Przesuń o 15 min później',
       legend: {
         printing: 'Drukowanie (zablokowane)',
         queued: 'W kolejce (przeciągnij, aby przenieść)',

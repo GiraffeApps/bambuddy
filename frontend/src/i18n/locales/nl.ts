@@ -1791,6 +1791,8 @@ export default {
       button: 'Slimme wachtrij',
       tooltip: 'Plaats alle wachtende taken op de tijdlijn: zoveel mogelijk starts tijdens kantooruren, de langste prints als laatste zodat ze \'s nachts doorlopen',
       locked: 'Bezig met printen (vergrendeld)',
+      nudgeEarlier: '15 min eerder',
+      nudgeLater: '15 min later',
       legend: {
         printing: 'Bezig met printen (vergrendeld)',
         queued: 'In wachtrij (sleep om te verplaatsen)',

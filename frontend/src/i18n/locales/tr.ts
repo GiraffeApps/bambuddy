@@ -1774,6 +1774,8 @@ export default {
       button: 'Akıllı kuyruk',
       tooltip: 'Kuyruktaki tüm işleri zaman çizelgesine yerleştir: mesai saatlerinde mümkün olduğunca çok başlatma, en uzun baskılar gece sürsün diye en sona',
       locked: 'Yazdırılıyor (kilitli)',
+      nudgeEarlier: '15 dk öne al',
+      nudgeLater: '15 dk ertele',
       legend: {
         printing: 'Yazdırılıyor (kilitli)',
         queued: 'Kuyrukta (taşımak için sürükleyin)',

@@ -1773,6 +1773,8 @@ export default {
       button: 'スマートキュー',
       tooltip: '待機中のジョブをすべてタイムラインに配置します。勤務時間内の開始数を最大化し、長い印刷は夜通し動くよう最後に回します',
       locked: '印刷中（ロック）',
+      nudgeEarlier: '15分早める',
+      nudgeLater: '15分遅らせる',
       legend: {
         printing: '印刷中（ロック）',
         queued: '待機中（ドラッグで移動）',

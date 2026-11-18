@@ -1690,6 +1690,8 @@ export default {
       button: '스마트 대기열',
       tooltip: '대기 중인 모든 작업을 타임라인에 배치합니다. 근무 시간 중 시작 횟수를 최대화하고, 긴 출력은 밤새 진행되도록 마지막에 둡니다',
       locked: '출력 중(잠김)',
+      nudgeEarlier: '15분 앞당기기',
+      nudgeLater: '15분 미루기',
       legend: {
         printing: '출력 중(잠김)',
         queued: '대기 중(끌어서 이동)',

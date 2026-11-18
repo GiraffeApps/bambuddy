@@ -1774,6 +1774,8 @@ export default {
       button: 'Fila inteligente',
       tooltip: 'Coloca todos os trabalhos da fila na linha do tempo: o máximo de inícios no horário comercial, as impressões mais longas por último para rodarem à noite',
       locked: 'Imprimindo (bloqueado)',
+      nudgeEarlier: 'Mover 15 min antes',
+      nudgeLater: 'Mover 15 min depois',
       legend: {
         printing: 'Imprimindo (bloqueado)',
         queued: 'Na fila (arraste para mover)',

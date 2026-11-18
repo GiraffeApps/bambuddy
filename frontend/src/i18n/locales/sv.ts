@@ -1791,6 +1791,8 @@ export default {
       button: 'Smart kö',
       tooltip: 'Placera alla köade jobb på tidslinjen: så många starter som möjligt under kontorstid, de längsta utskrifterna sist så att de går över natten',
       locked: 'Skriver ut (låst)',
+      nudgeEarlier: 'Flytta 15 min tidigare',
+      nudgeLater: 'Flytta 15 min senare',
       legend: {
         printing: 'Skriver ut (låst)',
         queued: 'I kö (dra för att flytta)',

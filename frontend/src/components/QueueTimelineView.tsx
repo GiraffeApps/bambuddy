@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Briefcase, ChevronLeft, ChevronRight, Clock, Layers, Loader2, Lock, Printer as PrinterIcon, Sparkles } from 'lucide-react';
 import { formatDuration, parseUTCDate } from '../utils/date';
 import { compareQueueOrder, queueLaneKey } from '../utils/queueOrder';
@@ -335,13 +335,10 @@ export function QueueTimelineView({
 
   const laneByKey = useMemo(() => new Map(lanes.map((lane) => [lane.key, lane])), [lanes]);
 
-  /** Start time and target lane the current drag would drop on. */
-  const dropTarget = (state: DragState) => {
-    const deltaMs = (state.dx / state.trackWidthPx) * RANGE_MS;
-    let startMs = Math.max(nowMs, Math.round((state.originalStartMs + deltaMs) / SNAP_MS) * SNAP_MS);
-    // A job dropped on top of another card starts when that card ends, so
-    // cards never overlap. Repeat in case that end lands inside the next one.
-    const others = (eventsByLane.get(state.laneKey) ?? []).filter((ev) => ev.item.id !== state.itemId);
+  /** `startMs` moved forward out of any other card in the lane, so cards
+   *  never overlap. Repeats in case a card's end lands inside the next one. */
+  const clearOfOtherCards = (startMs: number, laneKey: string, itemId: number) => {
+    const others = (eventsByLane.get(laneKey) ?? []).filter((ev) => ev.item.id !== itemId);
     for (let moved = true; moved; ) {
       moved = false;
       for (const ev of others) {
@@ -351,8 +348,67 @@ export function QueueTimelineView({
         }
       }
     }
-    return { startMs, lane: laneByKey.get(state.laneKey) };
+    return startMs;
   };
+
+  /** Start time and target lane the current drag would drop on. */
+  const dropTarget = (state: DragState) => {
+    const deltaMs = (state.dx / state.trackWidthPx) * RANGE_MS;
+    const snapped = Math.max(nowMs, Math.round((state.originalStartMs + deltaMs) / SNAP_MS) * SNAP_MS);
+    return { startMs: clearOfOtherCards(snapped, state.laneKey, state.itemId), lane: laneByKey.get(state.laneKey) };
+  };
+
+  /** Where one nudge (a snap step) earlier or later would put a card, or null
+   *  when it can't move that way (into the past, or into the card before). */
+  const nudgeTarget = (ev: ScheduleEvent, direction: -1 | 1): number | null => {
+    const current = ev.estimatedStart.getTime();
+    const step = direction > 0
+      ? Math.floor(current / SNAP_MS) * SNAP_MS + SNAP_MS
+      : Math.ceil(current / SNAP_MS) * SNAP_MS - SNAP_MS;
+    const target = clearOfOtherCards(Math.max(nowMs, step), queueLaneKey(ev.item), ev.item.id);
+    return direction > 0 ? (target > current ? target : null) : (target < current ? target : null);
+  };
+
+  const commitMove = (item: PrintQueueItem, scheduledTime: Date, printerId: number | null) => {
+    if (!onReschedule) return;
+    setLocalMoves((moves) => ({
+      ...moves,
+      [item.id]: {
+        scheduled_time: scheduledTime.toISOString(),
+        ...(printerId != null ? { printer_id: printerId, target_model: null } : {}),
+      },
+    }));
+    onReschedule(item, { printerId, scheduledTime });
+  };
+
+  const nudge = (ev: ScheduleEvent, direction: -1 | 1) => {
+    const target = nudgeTarget(ev, direction);
+    if (target != null) commitMove(ev.item, new Date(target), null);
+  };
+
+  const handleBarKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, ev: ScheduleEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    nudge(ev, e.key === 'ArrowLeft' ? -1 : 1);
+  };
+
+  // The card whose nudge arrows are showing (hovered or focused).
+  const [activeCardId, setActiveCardId] = useState<number | null>(null);
+  // Leaving a card for one of its arrows (drawn on top of it) fires a
+  // mouseleave first, so hiding waits a moment for the arrow to claim it.
+  const hideArrowsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showArrowsFor = (id: number) => {
+    if (hideArrowsTimer.current) clearTimeout(hideArrowsTimer.current);
+    hideArrowsTimer.current = null;
+    setActiveCardId(id);
+  };
+  const hideArrowsSoon = (id: number) => {
+    if (hideArrowsTimer.current) clearTimeout(hideArrowsTimer.current);
+    hideArrowsTimer.current = setTimeout(() => setActiveCardId((cur) => (cur === id ? null : cur)), 150);
+  };
+  useEffect(() => () => {
+    if (hideArrowsTimer.current) clearTimeout(hideArrowsTimer.current);
+  }, []);
 
   const handleBarPointerDown = (e: ReactPointerEvent<HTMLButtonElement>, ev: ScheduleEvent) => {
     if (!onReschedule || ev.type !== 'queued' || e.button !== 0) return;
@@ -394,15 +450,7 @@ export function QueueTimelineView({
     suppressClickRef.current = true;
     const { startMs, lane } = dropTarget(drag);
     const printerId = lane?.printerId != null && lane.printerId !== ev.item.printer_id ? lane.printerId : null;
-    const scheduledTime = new Date(startMs);
-    setLocalMoves((moves) => ({
-      ...moves,
-      [ev.item.id]: {
-        scheduled_time: scheduledTime.toISOString(),
-        ...(printerId != null ? { printer_id: printerId, target_model: null } : {}),
-      },
-    }));
-    onReschedule(ev.item, { printerId, scheduledTime });
+    commitMove(ev.item, new Date(startMs), printerId);
   };
 
   return (
@@ -643,9 +691,19 @@ export function QueueTimelineView({
                         isPrinting && onReschedule ? t('queue.smartQueue.locked') : null,
                         ev.blockedReason ?? null,
                       ].filter(Boolean).join(' · ');
+                      const showArrows = draggable && !dragging && activeCardId === ev.item.id;
+                      const earlier = showArrows ? nudgeTarget(ev, -1) : null;
+                      const later = showArrows ? nudgeTarget(ev, 1) : null;
+                      const arrowClass =
+                        'absolute z-20 w-5 h-6 rounded bg-bambu-dark/90 border border-bambu-dark-tertiary text-white flex items-center justify-center hover:bg-bambu-green hover:text-black disabled:opacity-30 disabled:pointer-events-none';
                       return (
+                        <Fragment key={ev.item.id}>
                         <button
-                          key={ev.item.id}
+                          onMouseEnter={draggable ? () => showArrowsFor(ev.item.id) : undefined}
+                          onMouseLeave={draggable ? () => hideArrowsSoon(ev.item.id) : undefined}
+                          onFocus={draggable ? () => showArrowsFor(ev.item.id) : undefined}
+                          onBlur={draggable ? () => hideArrowsSoon(ev.item.id) : undefined}
+                          onKeyDown={draggable ? (e) => handleBarKeyDown(e, ev) : undefined}
                           onClick={() => {
                             if (suppressClickRef.current) {
                               suppressClickRef.current = false;
@@ -712,6 +770,43 @@ export function QueueTimelineView({
                             />
                           )}
                         </button>
+                        {showArrows && (
+                          <>
+                            <button
+                              type="button"
+                              className={arrowClass}
+                              style={{ left: `calc(${leftPct}% + 2px)`, top: 8 + (LANE_BAR_HEIGHT_PX - 24) / 2 }}
+                              onMouseEnter={() => showArrowsFor(ev.item.id)}
+                              onMouseLeave={() => hideArrowsSoon(ev.item.id)}
+                              onFocus={() => showArrowsFor(ev.item.id)}
+                              onBlur={() => hideArrowsSoon(ev.item.id)}
+                              onClick={() => nudge(ev, -1)}
+                              disabled={earlier == null}
+                              title={t('queue.smartQueue.nudgeEarlier')}
+                              aria-label={t('queue.smartQueue.nudgeEarlier')}
+                              data-testid={`timeline-nudge-left-${ev.item.id}`}
+                            >
+                              <ChevronLeft className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              className={arrowClass}
+                              style={{ left: `calc(${leftPct}% + ${widthCss} - 22px)`, top: 8 + (LANE_BAR_HEIGHT_PX - 24) / 2 }}
+                              onMouseEnter={() => showArrowsFor(ev.item.id)}
+                              onMouseLeave={() => hideArrowsSoon(ev.item.id)}
+                              onFocus={() => showArrowsFor(ev.item.id)}
+                              onBlur={() => hideArrowsSoon(ev.item.id)}
+                              onClick={() => nudge(ev, 1)}
+                              disabled={later == null}
+                              title={t('queue.smartQueue.nudgeLater')}
+                              aria-label={t('queue.smartQueue.nudgeLater')}
+                              data-testid={`timeline-nudge-right-${ev.item.id}`}
+                            >
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </div>

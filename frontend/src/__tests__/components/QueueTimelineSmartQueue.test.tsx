@@ -328,3 +328,64 @@ describe('QueueTimelineView cards', () => {
     expect(Math.abs(start - firstEnd)).toBeLessThan(5000);
   });
 });
+
+describe('QueueTimelineView nudge arrows', () => {
+  const QUARTER = 15 * 60 * 1000;
+
+  function renderNudge(items: PrintQueueItem[], onReschedule = vi.fn()) {
+    render(
+      <QueueTimelineView
+        queueItems={items}
+        printers={printers}
+        printerStatuses={statuses}
+        sjfEnabled={false}
+        onItemClick={() => {}}
+        onReschedule={onReschedule}
+        t={t}
+      />,
+    );
+    return onReschedule;
+  }
+
+  it('shows arrows on a hovered queued card, never on a printing one', () => {
+    renderNudge([running, pending(1, 'Queued job', 1)]);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-100'));
+    expect(screen.queryByTestId('timeline-nudge-left-100')).toBeNull();
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    expect(screen.getByTestId('timeline-nudge-left-1')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-nudge-right-1')).toBeInTheDocument();
+  });
+
+  it('the right arrow moves a card one quarter hour later', () => {
+    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
+    const onReschedule = renderNudge([pending(1, 'Queued job', 1, { scheduled_time: new Date(inTwo).toISOString() })]);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    fireEvent.click(screen.getByTestId('timeline-nudge-right-1'));
+    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo + QUARTER);
+    expect(onReschedule.mock.calls[0][1].printerId).toBeNull();
+  });
+
+  it('the left arrow moves a card one quarter hour earlier', () => {
+    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
+    const onReschedule = renderNudge([pending(1, 'Queued job', 1, { scheduled_time: new Date(inTwo).toISOString() })]);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    fireEvent.click(screen.getByTestId('timeline-nudge-left-1'));
+    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo - QUARTER);
+  });
+
+  it('keyboard arrows nudge the focused card', () => {
+    const inTwo = Math.ceil((Date.now() + 2 * HOUR_MS) / QUARTER) * QUARTER;
+    const onReschedule = renderNudge([pending(1, 'Queued job', 1, { scheduled_time: new Date(inTwo).toISOString() })]);
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowRight' });
+    expect((onReschedule.mock.calls[0][1].scheduledTime as Date).getTime()).toBe(inTwo + QUARTER);
+  });
+
+  it('cannot move a card back into the one before it', () => {
+    // Chained straight after the running print, so there is no room earlier.
+    const onReschedule = renderNudge([running, pending(1, 'Queued job', 1)]);
+    fireEvent.mouseEnter(screen.getByTestId('timeline-bar-1'));
+    expect(screen.getByTestId('timeline-nudge-left-1')).toBeDisabled();
+    fireEvent.keyDown(screen.getByTestId('timeline-bar-1'), { key: 'ArrowLeft' });
+    expect(onReschedule).not.toHaveBeenCalled();
+  });
+});
